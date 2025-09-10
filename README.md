@@ -109,6 +109,7 @@ Default configuration:
   },
   persist = true,
   persist_namespace = "default",
+  persist_file = vim.fn.stdpath('data') .. '/megatoggler/state.json',
   tabs = {
     -- see examples above
     -- { id = "editor", label = "Editor", items = { ... } }

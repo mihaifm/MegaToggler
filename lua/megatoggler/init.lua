@@ -22,16 +22,17 @@ local defaults = {
     title = 'MegaToggler',
     zindex = 200,
     icons = {
-      checked = '',
-      unchecked = '',
+      checked = ' ',
+      unchecked = ' ',
     },
   },
   persist = true,
   persist_namespace = 'default',
+  persist_file = vim.fn.stdpath('state') .. '/megatoggler/state.json',
 }
 
--- Default icons; users may override per item. ASCII fallback available.
-local ICONS = { checked = '', unchecked = '' }
+-- Default icons; users may override per item
+local ICONS = { checked = ' ', unchecked = ' ' }
 
 -- Internal ephemeral state for the dashboard instance
 local state = {
@@ -77,15 +78,14 @@ local function merge(a, b)
   return res
 end
 
--- Persistence helpers: JSON file under stdpath('data')/mega_toggler/state.json
--- persist_dir: directory holding MegaToggler state under stdpath('data')
-local function persist_dir()
-  return vim.fn.stdpath('data') .. '/mega_toggler'
-end
-
--- persist_file: full path to the JSON file storing states
+-- Persistence helpers
 local function persist_file()
-  return persist_dir() .. '/state.json'
+  local cfg = state.config or defaults
+  local custom = cfg and cfg.persist_file
+  if type(custom) == 'string' and #custom > 0 then
+    return vim.fn.expand(custom)
+  end
+  return defaults.persist_file
 end
 
 -- load_state: read JSON state into memory; initialize empty if none
@@ -112,13 +112,15 @@ end
 -- save_state: write the in-memory state to the JSON file
 local function save_state()
   if not state.config or state.config.persist == false then return end
-  vim.fn.mkdir(persist_dir(), 'p')
+  local file = persist_file()
+  local dir = vim.fn.fnamemodify(file, ':h')
+  if dir and #dir > 0 then vim.fn.mkdir(dir, 'p') end
   local encoded = vim.json.encode(state.persisted or {})
   -- writefile expects a list of lines
   local lines = {}
   for s in encoded:gmatch("[^\n]+") do table.insert(lines, s) end
   if #lines == 0 then lines = { encoded } end
-  vim.fn.writefile(lines, persist_file())
+  vim.fn.writefile(lines, file)
 end
 
 -- get_persist: returns saved boolean for a given namespace/tab/item
