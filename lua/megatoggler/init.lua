@@ -21,19 +21,17 @@ local defaults = {
     border = 'rounded',
     title = 'MegaToggler',
     zindex = 200,
+    icons = {
+      checked = '',
+      unchecked = '',
+    },
   },
   persist = true,
   persist_namespace = 'default',
-  fallback_ascii = true,
 }
 
 -- Default icons; users may override per item. ASCII fallback available.
-local ICONS = {
-  checked = '',
-  unchecked = '',
-  checked_ascii = '[x]',
-  unchecked_ascii = '[ ]',
-}
+local ICONS = { checked = '', unchecked = '' }
 
 -- Internal ephemeral state for the dashboard instance
 local state = {
@@ -193,16 +191,15 @@ local function apply_persisted_states()
   end
 end
 
--- Utility: pick icons; uses ASCII if fallback requested and nerd font not signaled
+-- Utility: pick icons
 local function get_icons(item)
   local cfg = state.config or defaults
-  local use_ascii = cfg.fallback_ascii == true and vim.g.nerd_font == 0
-  -- We do not really know if nerd fonts are available; allow override by setting g:nerd_font=1 to force icons.
-  local icons = (item and item.icons) or ICONS
-  if use_ascii then
-    return { checked = icons.checked_ascii or ICONS.checked_ascii, unchecked = icons.unchecked_ascii or ICONS.unchecked_ascii }
-  end
-  return { checked = icons.checked or ICONS.checked, unchecked = icons.unchecked or ICONS.unchecked }
+  local cfg_icons = (cfg.ui and cfg.ui.icons) or nil
+  local icons = (item and item.icons) or cfg_icons or ICONS
+  return {
+    checked = icons.checked or ICONS.checked,
+    unchecked = icons.unchecked or ICONS.unchecked,
+  }
 end
 
 -- Convenience helpers for current tab and item state resolution

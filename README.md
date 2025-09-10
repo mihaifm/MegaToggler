@@ -104,7 +104,8 @@ Default configuration:
   ui = { 
     width = 60, 
     height = 18, 
-    border = "rounded"
+    border = "rounded",
+    icons = { checked = '', unchecked = '' },
   },
   persist = true,
   persist_namespace = "default",
@@ -112,6 +113,14 @@ Default configuration:
     -- see examples above
     -- { id = "editor", label = "Editor", items = { ... } }
   }
+}
+```
+
+The default config comes with nerd font icons. Override with ascii values if not using a nerd font.
+
+```lua
+{
+  ui = { icons = { checked = '[x]', unchecked = '[ ]' }
 }
 ```
 
