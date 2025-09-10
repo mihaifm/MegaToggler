@@ -134,6 +134,7 @@ require("mega_toggler").open()
 require("mega_toggler").close()
 require("mega_toggler").toggle()
 require("mega_toggler").refresh()
+require("mega_toggler").persist()
 ```
 
 ## Highlights

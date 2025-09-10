@@ -49,6 +49,12 @@ local state = {
 -- Forward declaration for helper used before its definition
 local with_target_window
 
+-- Forward declaration for persist-all helper
+local persist_all_current_states
+
+-- Forward declaration for item_effective_state used before its definition
+local item_effective_state
+
 -- deepcopy: recursively copies tables to avoid mutating user-provided options
 local function deepcopy(tbl)
   if type(tbl) ~= 'table' then return tbl end
@@ -126,6 +132,27 @@ local function get_persist(ns, tab_id, item_id)
   return t[item_id]
 end
 
+-- persist_all_current_states: snapshot current states for all items and write
+-- them to the persistence file in a single save. Uses item.get() evaluated in
+-- the target window context when available.
+function persist_all_current_states()
+  if not state.config or state.config.persist == false then return end
+  local ns = state.config.persist_namespace or 'default'
+  state.persisted[ns] = state.persisted[ns] or {}
+  local ns_tbl = state.persisted[ns]
+  for _, tab in ipairs(state.config.tabs or {}) do
+    ns_tbl[tab.id] = ns_tbl[tab.id] or {}
+    local tab_tbl = ns_tbl[tab.id]
+    for _, item in ipairs(tab.items or {}) do
+      if not item.disabled and type(item.get) == 'function' then
+        local val = item_effective_state(tab, item)
+        tab_tbl[item.id] = val and true or false
+      end
+    end
+  end
+  save_state()
+end
+
 -- set_persist: saves a boolean for a given namespace/tab/item and writes file
 local function set_persist(ns, tab_id, item_id, val)
   state.persisted[ns] = state.persisted[ns] or {}
@@ -183,7 +210,7 @@ local function current_tab_conf()
   return state.config.tabs[state.current_tab]
 end
 
-local function item_effective_state(tab, item)
+function item_effective_state(tab, item)
   -- Effective state for UI is whatever get() reports on the target window.
   local ok, cur
   if state.win and vim.api.nvim_win_is_valid(state.win) then
@@ -352,6 +379,9 @@ local function open_win()
   -- Remember the window/buffer that was active before opening the dashboard.
   state.prev_win = vim.api.nvim_get_current_win()
   state.prev_buf = vim.api.nvim_get_current_buf()
+  -- Persist all current states immediately upon opening, before user actions.
+  -- At this point, state.win is not created yet, so get() runs in the target window.
+  persist_all_current_states()
   local ui = state.config.ui or {}
   local width = ui.width or 60
   local height = ui.height or 18
@@ -558,6 +588,11 @@ function M.setup(opts)
   end, { desc = 'Open/close MegaToggler dashboard' })
 
   return M
+end
+
+-- persist: public API to snapshot and save current states for all items
+function M.persist()
+  persist_all_current_states()
 end
 
 return M
