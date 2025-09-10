@@ -12,6 +12,9 @@
 --
 local M = {}
 
+-- Dedicated namespace for extmark-based highlights (Neovim 0.11+)
+local NS = vim.api.nvim_create_namespace('MegaToggler')
+
 -- Defaults and config baseline
 local defaults = {
   tabs = {},
@@ -94,7 +97,7 @@ local function load_state()
     state.persisted = {}
     return
   end
-  local ok = vim.loop.fs_stat(persist_file()) ~= nil
+  local ok = vim.uv.fs_stat(persist_file()) ~= nil
   if not ok then
     state.persisted = {}
     return
@@ -238,7 +241,12 @@ end
 local function apply_highlights(buf, spans)
   -- spans: list of {hl, lnum (0-based), start_col, end_col}
   for _, s in ipairs(spans or {}) do
-    pcall(vim.api.nvim_buf_add_highlight, buf, -1, s[1], s[2], s[3], s[4])
+    local hl, lnum, start_col, end_col = s[1], s[2], s[3], s[4]
+    pcall(vim.api.nvim_buf_set_extmark, buf, NS, lnum, start_col, {
+      end_row = lnum,
+      end_col = end_col,
+      hl_group = hl,
+    })
   end
 end
 
@@ -325,8 +333,7 @@ end
 
 local function render()
   if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then return end
-  local buf = state.buf
-  vim.bo[buf].modifiable = true
+  vim.bo[state.buf].modifiable = true
 
   local lines = {}
   local hl_spans = {}
@@ -361,10 +368,10 @@ local function render()
     end
   end
 
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.api.nvim_buf_clear_namespace(buf, -1, 0, -1)
-  apply_highlights(buf, hl_spans)
-  vim.bo[buf].modifiable = false
+  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
+  vim.api.nvim_buf_clear_namespace(state.buf, NS, 0, -1)
+  apply_highlights(state.buf, hl_spans)
+  vim.bo[state.buf].modifiable = false
 end
 
 -- Create centered floating window, wire buffer-local keymaps, and render

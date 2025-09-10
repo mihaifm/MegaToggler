@@ -8,6 +8,8 @@ A Neovim plugin where you can toggle things on and off.
 
 ## Install
 
+Requirement: Neovim 0.11+
+
 Sample lazy.nvim installation below.
 
 MegaToggler does not come with any default items to be toggled. You will need to provide your own.
