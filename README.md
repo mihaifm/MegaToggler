@@ -32,13 +32,14 @@ Below is a sample configuration that can help you get started:
           items = {
             {
               id = "number",
-              label = "Line Numbers",
-              get = function() return vim.wo.number end,
-              on_toggle = function(on) vim.wo.number = on end,
+              label = "Line Numbers", -- what gets displayed in the dasboard
+              get = function() return vim.wo.number end, -- mandatory function returning item state
+              on_toggle = function(on) vim.wo.number = on end, -- called when ticking the checkbox
             },
             {
               id = "relativenumber",
               label = "Relative Numbers",
+              persist = false, -- do not save the state of this item across sessions
               get = function() return vim.wo.relativenumber end,
               on_toggle = function(on) vim.wo.relativenumber = on end,
             },

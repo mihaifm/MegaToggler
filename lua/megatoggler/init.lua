@@ -147,7 +147,7 @@ function persist_all_current_states()
     ns_tbl[tab.id] = ns_tbl[tab.id] or {}
     local tab_tbl = ns_tbl[tab.id]
     for _, item in ipairs(tab.items or {}) do
-      if not item.disabled and type(item.get) == 'function' then
+      if not item.disabled and item.persist ~= false and type(item.get) == 'function' then
         local val = item_effective_state(tab, item)
         tab_tbl[item.id] = val and true or false
       end
@@ -175,7 +175,7 @@ local function apply_persisted_states()
   local ns = state.config.persist_namespace or 'default'
   for _, tab in ipairs(state.config.tabs or {}) do
     for _, item in ipairs(tab.items or {}) do
-      if not item.disabled and type(item.get) == 'function' and type(item.on_toggle) == 'function' then
+      if not item.disabled and item.persist ~= false and type(item.get) == 'function' and type(item.on_toggle) == 'function' then
         local pv = get_persist(ns, tab.id, item.id)
         if pv ~= nil then
           local ok_get, cur = pcall(item.get)
@@ -544,7 +544,9 @@ function M._toggle_by_index(idx, keep_cursor_lnum)
     vim.notify(string.format('MegaToggler: error toggling %s: %s', item.label or item.id, err), vim.log.levels.ERROR)
     return
   end
-  set_persist(state.config.persist_namespace or 'default', tab.id, item.id, new_checked)
+  if item.persist ~= false then
+    set_persist(state.config.persist_namespace or 'default', tab.id, item.id, new_checked)
+  end
   render()
   if keep_cursor_lnum and state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_set_cursor(state.win, { keep_cursor_lnum, 0 })
