@@ -212,6 +212,15 @@ local function current_tab_conf()
   return state.config.tabs[state.current_tab]
 end
 
+-- find tab by id; returns index and tab or nil
+local function find_tab(tab_id)
+  if not (state.config and state.config.tabs) then return nil, nil end
+  for i, t in ipairs(state.config.tabs) do
+    if t.id == tab_id then return i, t end
+  end
+  return nil, nil
+end
+
 function item_effective_state(tab, item)
   -- Effective state for UI is whatever get() reports on the target window.
   local ok, cur
@@ -601,6 +610,137 @@ end
 -- persist: public API to snapshot and save current states for all items
 function M.persist()
   persist_all_current_states()
+end
+
+-- add_item: append a validated item to a given tab by id
+-- Respects per-item persist flag: if a persisted value exists, applies it.
+function M.add_item(tab_id, item)
+  assert(type(tab_id) == 'string' and #tab_id > 0, 'add_item: tab_id must be a non-empty string')
+  assert(type(item) == 'table', 'add_item: item must be a table')
+  local ti, tab = find_tab(tab_id)
+  assert(tab, 'add_item: tab id not found: ' .. tostring(tab_id))
+
+  -- Validate item
+  if not (item.id and type(item.id) == 'string') then
+    vim.notify('MegaToggler: ignoring item without string id in tab ' .. tab.id, vim.log.levels.WARN)
+    return false
+  end
+  for _, it in ipairs(tab.items or {}) do
+    if it.id == item.id then
+      vim.notify('MegaToggler: duplicate item id in tab ' .. tab.id .. ': ' .. item.id .. ' (ignoring)', vim.log.levels.WARN)
+      return false
+    end
+  end
+  if type(item.get) ~= 'function' then
+    vim.notify('MegaToggler: item ' .. item.id .. ' missing get(); ignoring', vim.log.levels.WARN)
+    return false
+  end
+  if type(item.on_toggle) ~= 'function' then
+    vim.notify('MegaToggler: item ' .. item.id .. ' missing on_toggle(); ignoring', vim.log.levels.WARN)
+    return false
+  end
+
+  tab.items = tab.items or {}
+  table.insert(tab.items, item)
+
+  -- If persistence enabled and item allows it, apply persisted value if present
+  if state.config and state.config.persist ~= false and item.persist ~= false then
+    local ns = state.config.persist_namespace or 'default'
+    local pv = get_persist(ns, tab.id, item.id)
+    if pv ~= nil then
+      local cur = item_effective_state(tab, item)
+      if pv ~= cur then
+        local ok_cb, err = with_target_window(function()
+          return item.on_toggle(pv)
+        end)
+        if not ok_cb then
+          vim.notify(string.format('MegaToggler: error applying persisted %s: %s', item.label or item.id, err), vim.log.levels.ERROR)
+        end
+      end
+    end
+  end
+
+  -- Rerender if dashboard is open and we're on this tab
+  if state.win and vim.api.nvim_win_is_valid(state.win) and state.current_tab == ti then
+    render()
+  end
+
+  return true
+end
+
+-- remove_item: remove an item by id from a given tab; returns true if removed
+function M.remove_item(tab_id, item_id)
+  assert(type(tab_id) == 'string' and #tab_id > 0, 'remove_item: tab_id must be a non-empty string')
+  assert(type(item_id) == 'string' and #item_id > 0, 'remove_item: item_id must be a non-empty string')
+  local ti, tab = find_tab(tab_id)
+  if not tab or not tab.items then return false end
+  for idx, it in ipairs(tab.items) do
+    if it.id == item_id then
+      table.remove(tab.items, idx)
+      if state.win and vim.api.nvim_win_is_valid(state.win) and state.current_tab == ti then
+        render()
+      end
+      return true
+    end
+  end
+  return false
+end
+
+-- add_tab: append a new tab with validated items; returns index of new tab
+function M.add_tab(tab)
+  assert(type(tab) == 'table', 'add_tab: tab must be a table')
+  assert(tab.id and type(tab.id) == 'string', 'add_tab: tab.id (string) is required')
+  local existing_index = select(1, find_tab(tab.id))
+  assert(not existing_index, 'add_tab: duplicate tab id: ' .. tab.id)
+
+  -- validate and filter items similar to setup
+  tab.items = tab.items or {}
+  local filtered, seen_item = {}, {}
+  for _, item in ipairs(tab.items) do
+    if not (item.id and type(item.id) == 'string') then
+      vim.notify('MegaToggler: ignoring item without string id in tab ' .. tab.id, vim.log.levels.WARN)
+    elseif seen_item[item.id] then
+      vim.notify('MegaToggler: duplicate item id in tab ' .. tab.id .. ': ' .. item.id .. ' (ignoring)', vim.log.levels.WARN)
+    elseif type(item.get) ~= 'function' then
+      vim.notify('MegaToggler: item ' .. tostring(item.id) .. ' missing get(); ignoring', vim.log.levels.WARN)
+    elseif type(item.on_toggle) ~= 'function' then
+      vim.notify('MegaToggler: item ' .. tostring(item.id) .. ' missing on_toggle(); ignoring', vim.log.levels.WARN)
+    else
+      seen_item[item.id] = true
+      table.insert(filtered, item)
+    end
+  end
+  tab.items = filtered
+
+  table.insert(state.config.tabs, tab)
+  local new_index = #state.config.tabs
+
+  -- Apply persisted values for items if allowed
+  if state.config and state.config.persist ~= false then
+    local ns = state.config.persist_namespace or 'default'
+    for _, item in ipairs(tab.items) do
+      if item.persist ~= false then
+        local pv = get_persist(ns, tab.id, item.id)
+        if pv ~= nil then
+          local cur = item_effective_state(tab, item)
+          if pv ~= cur then
+            local ok_cb, err = with_target_window(function()
+              return item.on_toggle(pv)
+            end)
+            if not ok_cb then
+              vim.notify(string.format('MegaToggler: error applying persisted %s: %s', item.label or item.id, err), vim.log.levels.ERROR)
+            end
+          end
+        end
+      end
+    end
+  end
+
+  if state.win and vim.api.nvim_win_is_valid(state.win) then
+    render()
+  end
+
+  return new_index
 end
 
 return M

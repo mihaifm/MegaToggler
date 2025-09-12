@@ -148,6 +148,9 @@ require("mega_toggler").close()
 require("mega_toggler").toggle()
 require("mega_toggler").refresh()
 require("mega_toggler").persist()
+require("mega_toggler").add_item(tab_id, item)
+require("mega_toggler").remove_item(tab_id, item_id)
+require("mega_toggler").add_tab({ id, label, items = { ... } })
 ```
 
 ## Highlights
