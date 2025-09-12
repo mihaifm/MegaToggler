@@ -269,6 +269,8 @@ local function enforce_toggler_winopts(win)
   pcall(function() vim.wo[win].signcolumn = 'no' end)
   pcall(function() vim.wo[win].wrap = false end)
   pcall(function() vim.wo[win].spell = false end)
+  -- Ensure we are not left in insert mode after interacting with terminal buffers
+  pcall(vim.cmd.stopinsert)
 end
 
 -- with_target_window: temporarily switch to the previous editor window (or a
@@ -299,6 +301,7 @@ function with_target_window(fn)
     enforce_toggler_winopts(state.win)
   else
     pcall(vim.api.nvim_set_current_win, cur_win)
+    pcall(vim.cmd.stopinsert)
   end
   return ok, res
 end
