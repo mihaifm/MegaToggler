@@ -112,7 +112,7 @@ Default configuration:
   },
   persist = true,
   persist_namespace = "default",
-  persist_file = vim.fn.stdpath('data') .. '/megatoggler/state.json',
+  persist_file = vim.fn.stdpath('state') .. '/megatoggler/state.json',
   tabs = {
     -- see examples above
     -- { id = "editor", label = "Editor", items = { ... } }
@@ -143,14 +143,14 @@ Notes:
 ## API
 
 ```lua
-require("mega_toggler").open()
-require("mega_toggler").close()
-require("mega_toggler").toggle()
-require("mega_toggler").refresh()
-require("mega_toggler").persist()
-require("mega_toggler").add_item(tab_id, item)
-require("mega_toggler").remove_item(tab_id, item_id)
-require("mega_toggler").add_tab({ id, label, items = { ... } })
+require("megatoggler").open()
+require("megatoggler").close()
+require("megatoggler").toggle()
+require("megatoggler").refresh()
+require("megatoggler").persist()
+require("megatoggler").add_item(tab_id, item)
+require("megatoggler").remove_item(tab_id, item_id)
+require("megatoggler").add_tab({ id, label, items = { ... } })
 ```
 
 ## Highlights

@@ -1,4 +1,4 @@
--- MegaToggler: Tabbed keyboard-driven toggle dashboard for Neovim 0.9+
+-- MegaToggler: Tabbed keyboard-driven toggle dashboard for Neovim 0.11+
 --
 -- This module provides a floating window with tabs and checkbox-like items.
 -- Users navigate with the keyboard and toggle items that run user-provided
