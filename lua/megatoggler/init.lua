@@ -242,7 +242,7 @@ local function set_buf_opts(buf)
   vim.bo[buf].bufhidden = 'wipe'
   vim.bo[buf].swapfile = false
   vim.bo[buf].modifiable = false
-  vim.bo[buf].filetype = 'mega_toggler'
+  vim.bo[buf].filetype = 'megatoggler'
 end
 
 -- apply_highlights: assigns highlight groups over (line, col) ranges
