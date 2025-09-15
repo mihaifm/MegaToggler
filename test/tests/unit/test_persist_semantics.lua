@@ -1,5 +1,4 @@
 -- Unit test: per-item persist=false and custom persist_file
--- Run with the test runner.
 
 local mt = require('megatoggler')
 
@@ -11,8 +10,8 @@ mt.setup({
   persist_file = tmp,
   tabs = {
     { id = 't', items = {
-      { id = 'keep', label = 'Keep', get = function() return true end, on_toggle = function(_) end },
-      { id = 'nopersist', label = 'NoPersist', get = function() return true end, on_toggle = function(_) end, persist = false },
+      { id = 'keep', label = 'Keep', get = function() return true end, on_toggle = function() end },
+      { id = 'nopersist', label = 'NoPersist', get = function() return true end, on_toggle = function() end, persist = false },
     } },
   },
 })
@@ -27,5 +26,5 @@ assert(decoded.unit_ns and decoded.unit_ns.t, 'Namespace and tab should exist')
 assert(decoded.unit_ns.t.keep ~= nil, 'Persisted value for keep should exist')
 assert(decoded.unit_ns.t.nopersist == nil, 'Item with persist=false should not be saved')
 
-print('OK: unit persist semantics')
+print('OK: unit test - persist semantics')
 

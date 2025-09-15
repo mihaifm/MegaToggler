@@ -1,5 +1,4 @@
--- Integration test: toggling an item on and off restores original state
--- Run with the test runner.
+-- Toggling an item on and off restores original state
 
 local mt = require('megatoggler')
 
@@ -11,10 +10,18 @@ mt.setup({
   persist_namespace = 'toggle_on_off',
   persist_file = tmp,
   tabs = {
-    { id = 'editor', items = {
-      { id = 'number', label = 'Line Numbers', get = function() return vim.wo.number end, on_toggle = function(on) vim.wo.number = on end },
-    } },
-  },
+    {
+      id = 'editor',
+      items = {
+        {
+          id = 'number',
+          label = 'Line Numbers',
+          get = function() return vim.wo.number end,
+          on_toggle = function(on) vim.wo.number = on end
+        },
+      }
+    }
+  }
 })
 
 -- Capture the editing window (target) and its initial state
@@ -44,4 +51,4 @@ assert(decoded.toggle_on_off and decoded.toggle_on_off.editor, 'Expected namespa
 assert(decoded.toggle_on_off.editor.number == initial, 'Final persisted value should match initial state')
 
 mt.close()
-print('OK: integration toggle on/off')
+print('OK: integration test - toggle on/off')

@@ -1,4 +1,4 @@
--- Complex integration test: UI sync with external changes
+-- Test syncing with external changes
 -- Scenario:
 -- 1) Open MegaToggler
 -- 2) Switch to second tab
@@ -9,14 +9,9 @@
 
 local mt = require('megatoggler')
 
--- Helper: read all buffer lines
-local function buf_lines()
-  return vim.api.nvim_buf_get_lines(0, 0, -1, false)
-end
-
 -- Helper: first non-empty item line (line 3 visually)
 local function item_line()
-  local lines = buf_lines()
+  local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
   return lines[3] or ''
 end
 
@@ -57,7 +52,7 @@ vim.wait(30)
 local after_toggle = get_spell()
 assert(after_toggle == (not initial), 'Expected spell toggled by MegaToggler')
 
--- Verify UI reflects toggled state
+-- Verify that UI reflects toggled state
 local l = item_line()
 local expected_icon = after_toggle and '[x]' or '[ ]'
 assert(l:sub(1, #expected_icon) == expected_icon, 'UI should show expected icon after toggle')
@@ -72,7 +67,7 @@ vim.wait(10)
 local external = get_spell()
 assert(external == (not after_toggle), 'External change should invert the value')
 
--- 6) Reopen MegaToggler; it should sync to current value
+-- 6) Reopen MegaToggler - it should sync to current value
 mt.open()
 vim.wait(30)
 mt.next_tab()
@@ -82,5 +77,5 @@ local expected_icon2 = external and '[x]' or '[ ]'
 assert(l2:sub(1, #expected_icon2) == expected_icon2, 'UI should sync with external option value on reopen')
 
 mt.close()
-print('OK: integration sync with external change')
+print('OK: integration test - sync with external change')
 

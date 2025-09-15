@@ -1,5 +1,4 @@
--- Integration test: tab navigation affects rendered items
--- Run with the test runner.
+-- Tab navigation affecting rendered items
 
 local mt = require('megatoggler')
 
@@ -51,5 +50,5 @@ end
 assert(found_editor, 'Expected Line Numbers after going back')
 
 mt.close()
-print('OK: integration tabs and navigation')
+print('OK: integration test - tabs and navigation')
 
