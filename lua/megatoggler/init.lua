@@ -25,6 +25,7 @@ local defaults = {
     title = 'MegaToggler',
     zindex = 200,
     value_input = 'overlay', -- 'overlay' | 'nui'
+    padding = '  ', -- global left padding for items
     icons = {
       checked = ' ',
       unchecked = ' ',
@@ -223,6 +224,24 @@ local function get_icons(item)
   }
 end
 
+-- Compute left padding for an item. Accepts per-item override:
+-- - string: used as-is
+-- - number: repeat global padding that many times
+local function get_item_padding(item)
+  local ui = (state.config and state.config.ui) or {}
+  local base = (type(ui.padding) == 'string') and ui.padding or '  '
+  local p = item and item.padding
+  if p == nil then return base end
+  if type(p) == 'string' then return p end
+  if type(p) == 'number' then
+    if p <= 0 then return '' end
+    local out = {}
+    for _ = 1, p do out[#out + 1] = base end
+    return table.concat(out)
+  end
+  return base
+end
+
 -- Item kinds: 'toggle' (boolean) or 'value' (text/numeric)
 item_kind = function(item)
   if item.type == 'value' then return 'value' end
@@ -397,38 +416,44 @@ local function render()
   for _, item in ipairs(tab.items or {}) do
     local kind = item_kind(item)
     if kind == 'toggle' then
+      local pad = get_item_padding(item)
+      local padlen = #pad
       local checked = item_effective_state(tab, item)
       local icons = get_icons(item)
       local icon = checked and (icons.checked or icons_default.checked) or (icons.unchecked or icons_default.unchecked)
       local label = item.label or item.id
       local desc = item.desc and (' — ' .. item.desc) or ''
-      local line = string.format('%s %s%s', icon, label, desc)
+      local line = string.format('%s%s %s%s', pad, icon, label, desc)
       table.insert(lines, line)
 
       local lnum = #lines - 1 -- 0-based for highlights
-      local ico_end = #icon
+      local ico_start = padlen
+      local ico_end = ico_start + #icon
       local label_end = ico_end + 1 + #label
-      table.insert(hl_spans, { checked and 'MegaTogglerItemOn' or 'MegaTogglerItemOff', lnum, 0, label_end })
+      table.insert(hl_spans, { checked and 'MegaTogglerItemOn' or 'MegaTogglerItemOff', lnum, ico_start, label_end })
       if desc ~= '' then
         table.insert(hl_spans, { 'MegaTogglerDesc', lnum, label_end, label_end + #desc })
       end
     else
+      local pad = get_item_padding(item)
+      local padlen = #pad
       local label = item.label or item.id
       local value = item_current_value(tab, item)
       local value_str = tostring(value)
-      local line = string.format('%s: %s', label, value_str)
+      local line = string.format('%s%s: %s', pad, label, value_str)
       table.insert(lines, line)
       local lnum = #lines - 1
-      local label_end = #label
+      local label_start = padlen
+      local label_end = label_start + #label
       -- label
-      table.insert(hl_spans, { 'MegaTogglerValueLabel', lnum, 0, label_end })
+      table.insert(hl_spans, { 'MegaTogglerValueLabel', lnum, label_start, label_end })
       -- include colon and space then value
       table.insert(hl_spans, { 'MegaTogglerValueText', lnum, label_end + 2, #line })
       -- record meta for inline edit: 1-based item index increments with loop
       state.render_line_meta[#state.render_line_meta + 1] = {
         kind = 'value',
         lnum = lnum, -- 0-based buffer row
-        value_start = label_end + 2, -- 0-based start col of value
+        value_start = label_end + 2, -- 0-based start col of value (accounts for padding)
         value_len = #value_str,
       }
       goto continue

@@ -6,6 +6,7 @@ A Neovim plugin where you can toggle things on and off.
 - Toggle editor features via configurable callbacks
 - Also edit text/numeric values (e.g., Tabstop: 4)
 - State persistence across sessions
+- Configurable padding/indent per item to build tree-like layouts
 
 ## Install
 
@@ -132,6 +133,7 @@ Default configuration:
     height = 18, 
     border = "rounded", -- also used for value inputs (overlay and nui)
     value_input = 'overlay', -- 'overlay' (built-in) or 'nui' (requires nui.nvim, no fallback)
+    padding = '  ', -- global left padding for items
     icons = { checked = '', unchecked = '' },
   },
   persist = true,
@@ -157,8 +159,7 @@ The default config comes with nerd font icons. Override with ascii values if not
 - Command: `:MegaToggler` (toggles MegaToggler)
 - Movement: `j/k`, `<Up>/<Down>`, `gg/G`
 - Tabs: `h/l`, `<Left>/<Right>`, `Tab`/`<S-Tab>`
-- Toggle/value edit: `<CR>`, `<Space>` (toggles booleans; prompts input for values)
- - Toggle/value edit: `<CR>`, `<Space>` (toggles booleans; edits values inline)
+- Toggle/value edit: `<CR>`, `<Space>` (toggles booleans; edits values inline)
 - Close: `q`, `<Esc>`
 
 Notes:

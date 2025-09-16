@@ -18,7 +18,7 @@ end
 -- Prepare a simple config with two tabs and ASCII icons for reliable text checks
 mt.setup({
   persist = false,
-  ui = { icons = { checked = '[x]', unchecked = '[ ]' } },
+  ui = { icons = { checked = '[x]', unchecked = '[ ]' }, padding = '' },
   tabs = {
     { id = 'editor', label = 'Editor', items = {
       { id = 'number', label = 'Line Numbers', get = function() return vim.wo.number end, on_toggle = function(on) vim.wo.number = on end },
@@ -78,4 +78,3 @@ assert(l2:sub(1, #expected_icon2) == expected_icon2, 'UI should sync with extern
 
 mt.close()
 print('OK: integration test - sync with external change')
-
