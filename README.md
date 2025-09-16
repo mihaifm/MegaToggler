@@ -130,7 +130,7 @@ Default configuration:
   ui = { 
     width = 60, 
     height = 18, 
-    border = "rounded",
+    border = "rounded", -- also used for value inputs (overlay and nui)
     value_input = 'overlay', -- 'overlay' (built-in) or 'nui' (requires nui.nvim, no fallback)
     icons = { checked = '', unchecked = '' },
   },

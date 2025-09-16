@@ -700,12 +700,13 @@ function M._edit_value_by_index(idx, keep_cursor_lnum)
     local position = { row = meta.lnum - 1, col = meta.value_start - 1 }
     local width = ((vim.api.nvim_win_get_config(state.win) or {}).width) or (state.config.ui and state.config.ui.width) or 60
     local size = { width = math.max(1, width - meta.value_start) }
+    local border_style = (state.config.ui and state.config.ui.border) or 'none'
     local opts = {
       relative = 'win',
       winid = state.win,
       position = position,
       size = size,
-      border = { style = 'rounded' },
+      border = { style = border_style },
       zindex = (state.config.ui and state.config.ui.zindex or 200) + 1,
     }
     local input
@@ -781,15 +782,18 @@ function M._edit_value_by_index(idx, keep_cursor_lnum)
   local win_cfg = vim.api.nvim_win_get_config(state.win)
   local parent_width = win_cfg and win_cfg.width or (state.config.ui and state.config.ui.width) or 60
   local available = math.max(1, parent_width - meta.value_start)
+  local border_style = (state.config.ui and state.config.ui.border) or 'none'
+  local has_border = border_style ~= 'none' and border_style ~= ''
+  local content_width = math.max(1, available - (has_border and 2 or 0))
   local wopts = {
     relative = 'win',
     win = state.win,
-    row = meta.lnum,
-    col = meta.value_start,
-    width = available,
+    row = math.max(0, meta.lnum - (has_border and 1 or 0)),
+    col = math.max(0, meta.value_start - (has_border and 1 or 0)),
+    width = content_width,
     height = 1,
     style = 'minimal',
-    border = 'none',
+    border = has_border and border_style or 'none',
     zindex = (state.config.ui and state.config.ui.zindex or 200) + 1,
     noautocmd = true,
   }
