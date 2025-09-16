@@ -27,8 +27,8 @@ local defaults = {
     value_input = 'overlay', -- 'overlay' | 'nui'
     padding = '  ', -- global left padding for items
     icons = {
-      checked = ' ',
-      unchecked = ' ',
+      checked = '',
+      unchecked = '',
     },
   },
   persist = true,
@@ -37,7 +37,7 @@ local defaults = {
 }
 
 -- Default icons; users may override per item
-local ICONS = { checked = ' ', unchecked = ' ' }
+local ICONS = { checked = '', unchecked = '' }
 
 -- Internal ephemeral state for the dashboard instance
 local state = {
@@ -429,13 +429,13 @@ local function render()
       local icon = checked and (icons.checked or icons_default.checked) or (icons.unchecked or icons_default.unchecked)
       local label = item.label or item.id
       local desc = item.desc and (' — ' .. item.desc) or ''
-      local line = string.format('%s%s %s%s', pad, icon, label, desc)
+      local line = string.format('%s%s  %s%s', pad, icon, label, desc)
       table.insert(lines, line)
 
       local lnum = #lines - 1 -- 0-based for highlights
       local ico_start = padlen
       local ico_end = ico_start + #icon
-      local label_end = ico_end + 1 + #label
+      local label_end = ico_end + 2 + #label
       local hl_group = (checked and 'MegaTogglerItemOn' or 'MegaTogglerItemOff')
       if item.persist == false then
         hl_group = hl_group .. 'Ephemeral'
@@ -450,10 +450,10 @@ local function render()
       local label = item.label or item.id
       local value = item_current_value(tab, item)
       local value_str = tostring(value)
-      local line = string.format('%s%s  %s', pad, label, value_str)
+      local line = string.format('%s   %s  %s', pad, label, value_str)
       table.insert(lines, line)
       local lnum = #lines - 1
-      local label_start = padlen
+      local label_start = padlen + 3
       local label_end = label_start + #label
       -- label
       local hl_label = 'MegaTogglerValueLabel'
