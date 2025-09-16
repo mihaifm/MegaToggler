@@ -131,6 +131,7 @@ Default configuration:
     width = 60, 
     height = 18, 
     border = "rounded",
+    value_input = 'overlay', -- 'overlay' (built-in) or 'nui' (requires nui.nvim, no fallback)
     icons = { checked = '', unchecked = '' },
   },
   persist = true,
@@ -157,6 +158,7 @@ The default config comes with nerd font icons. Override with ascii values if not
 - Movement: `j/k`, `<Up>/<Down>`, `gg/G`
 - Tabs: `h/l`, `<Left>/<Right>`, `Tab`/`<S-Tab>`
 - Toggle/value edit: `<CR>`, `<Space>` (toggles booleans; prompts input for values)
+ - Toggle/value edit: `<CR>`, `<Space>` (toggles booleans; edits values inline)
 - Close: `q`, `<Esc>`
 
 Notes:
@@ -176,6 +178,13 @@ require("megatoggler").remove_item(tab_id, item_id)
 require("megatoggler").add_tab({ id, label, items = { ... } })
 require("megatoggler").set_value(tab_id, item_id, value) -- programmatic setter for value items
 ```
+
+### Value Input Provider
+
+- Configure with `ui.value_input = 'overlay' | 'nui'` (default: `overlay`).
+- `overlay`: built-in 1-line floating input placed over the value text.
+- `nui`: uses `nui.nvim`'s input; when selected, `nui.nvim` must be installed (no fallback).
+
 
 ## Highlights
 

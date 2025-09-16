@@ -24,6 +24,7 @@ local defaults = {
     border = 'rounded',
     title = 'MegaToggler',
     zindex = 200,
+    value_input = 'overlay', -- 'overlay' | 'nui'
     icons = {
       checked = ' ',
       unchecked = ' ',
@@ -648,6 +649,9 @@ function M._edit_value_by_index(idx, keep_cursor_lnum)
 
   local cur_val = item_current_value(tab, item)
   local default_text = cur_val ~= nil and tostring(cur_val) or ''
+  -- Item layout metadata for positioning
+  local meta = state.render_line_meta and state.render_line_meta[idx]
+  if not meta or meta.kind ~= 'value' then return end
 
   local function apply_value(val)
     local cur_win = vim.api.nvim_get_current_win()
@@ -683,9 +687,82 @@ function M._edit_value_by_index(idx, keep_cursor_lnum)
     end
   end
 
+  -- Prefer configured provider
+  local provider = (state.config.ui and state.config.ui.value_input) or 'overlay'
+
+  -- Attempt Nui-based input when requested
+  if provider == 'nui' then
+    local ok_nui, Input = pcall(require, 'nui.input')
+    if not (ok_nui and Input) then
+      vim.notify('MegaToggler: ui.value_input=nui requires nui.nvim', vim.log.levels.ERROR)
+      return
+    end
+    local position = { row = meta.lnum - 1, col = meta.value_start - 1 }
+    local width = ((vim.api.nvim_win_get_config(state.win) or {}).width) or (state.config.ui and state.config.ui.width) or 60
+    local size = { width = math.max(1, width - meta.value_start) }
+    local opts = {
+      relative = 'win',
+      winid = state.win,
+      position = position,
+      size = size,
+      border = { style = 'rounded' },
+      zindex = (state.config.ui and state.config.ui.zindex or 200) + 1,
+    }
+    local input
+    local ok_construct, err_construct = pcall(function()
+      input = Input(opts, {
+        prompt = '',
+        default_value = default_text,
+        on_close = function()
+          if state.win and vim.api.nvim_win_is_valid(state.win) then
+            pcall(vim.api.nvim_set_current_win, state.win)
+            enforce_toggler_winopts(state.win)
+            if keep_cursor_lnum then pcall(vim.api.nvim_win_set_cursor, state.win, { keep_cursor_lnum, 0 }) end
+          end
+        end,
+        on_submit = function(txt)
+          local val
+          if type(item.coerce) == 'function' then
+            local okc, coerced = pcall(item.coerce, txt)
+            val = okc and coerced or txt
+          else
+            local n = tonumber(txt)
+            val = n ~= nil and n or txt
+          end
+          if type(item.validate) == 'function' then
+            local okv, msg = item.validate(val)
+            if not okv then
+              vim.notify(string.format('MegaToggler: invalid value for %s%s', item.label or item.id, msg and (': ' .. tostring(msg)) or ''), vim.log.levels.WARN)
+              return
+            end
+          end
+          apply_value(val)
+        end,
+      })
+    end)
+    if not ok_construct or not input then
+      vim.notify('MegaToggler: failed to construct nui input: ' .. tostring(err_construct), vim.log.levels.ERROR)
+      return
+    end
+    local ok_mount, err_mount = pcall(function() input:mount() end)
+    if not ok_mount then
+      vim.notify('MegaToggler: failed to mount nui input: ' .. tostring(err_mount), vim.log.levels.ERROR)
+      return
+    end
+    -- Map <Esc> to unmount in both normal and insert modes
+    pcall(function()
+      input:map('n', '<Esc>', function()
+        input:unmount()
+      end, { noremap = true, nowait = true, silent = true })
+      input:map('i', '<Esc>', function()
+        input:unmount()
+      end, { noremap = true, nowait = true, silent = true })
+    end)
+    return
+  end
+
   -- Use a 1-line overlay floating window positioned at the value text
-  local meta = state.render_line_meta and state.render_line_meta[idx]
-  if not meta or meta.kind ~= 'value' then return end
+  -- meta already computed above
   -- Close any existing overlay first
   if state.overlay_win and vim.api.nvim_win_is_valid(state.overlay_win) then
     pcall(vim.api.nvim_win_close, state.overlay_win, true)
