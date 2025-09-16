@@ -196,8 +196,15 @@ require("megatoggler").set_value(tab_id, item_id, value) -- programmatic setter 
 - `MegaTogglerItem`
 - `MegaTogglerItemOn`
 - `MegaTogglerItemOff`
+- `MegaTogglerItemEphemeral`
+- `MegaTogglerItemOnEphemeral`
+- `MegaTogglerItemOffEphemeral`
 - `MegaTogglerDesc`
 - `MegaTogglerHint`
+- `MegaTogglerValueLabel`
+- `MegaTogglerValueText`
+- `MegaTogglerValueLabelEphemeral`
+- `MegaTogglerValueTextEphemeral`
 
 ## License
 

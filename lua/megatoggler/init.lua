@@ -22,7 +22,7 @@ local defaults = {
     width = 60,
     height = 18,
     border = 'rounded',
-    title = 'MegaToggler',
+    title = ' MegaToggler ',
     zindex = 200,
     value_input = 'overlay', -- 'overlay' | 'nui'
     padding = '  ', -- global left padding for items
@@ -373,6 +373,12 @@ local function ensure_highlight_defaults()
   try('highlight default link MegaTogglerHint NonText')
   try('highlight default link MegaTogglerValueLabel Identifier')
   try('highlight default link MegaTogglerValueText Normal')
+  -- Ephemeral (non-persisted) variants
+  try('highlight default link MegaTogglerItemEphemeral Comment')
+  try('highlight default link MegaTogglerItemOnEphemeral Constant')
+  try('highlight default link MegaTogglerItemOffEphemeral Comment')
+  try('highlight default link MegaTogglerValueLabelEphemeral Constant')
+  try('highlight default link MegaTogglerValueTextEphemeral Normal')
 end
 
 -- build_tabline: produce the tabline string (line 1) and highlight spans
@@ -430,7 +436,11 @@ local function render()
       local ico_start = padlen
       local ico_end = ico_start + #icon
       local label_end = ico_end + 1 + #label
-      table.insert(hl_spans, { checked and 'MegaTogglerItemOn' or 'MegaTogglerItemOff', lnum, ico_start, label_end })
+      local hl_group = (checked and 'MegaTogglerItemOn' or 'MegaTogglerItemOff')
+      if item.persist == false then
+        hl_group = hl_group .. 'Ephemeral'
+      end
+      table.insert(hl_spans, { hl_group, lnum, ico_start, label_end })
       if desc ~= '' then
         table.insert(hl_spans, { 'MegaTogglerDesc', lnum, label_end, label_end + #desc })
       end
@@ -440,15 +450,19 @@ local function render()
       local label = item.label or item.id
       local value = item_current_value(tab, item)
       local value_str = tostring(value)
-      local line = string.format('%s%s: %s', pad, label, value_str)
+      local line = string.format('%s%s  %s', pad, label, value_str)
       table.insert(lines, line)
       local lnum = #lines - 1
       local label_start = padlen
       local label_end = label_start + #label
       -- label
-      table.insert(hl_spans, { 'MegaTogglerValueLabel', lnum, label_start, label_end })
+      local hl_label = 'MegaTogglerValueLabel'
+      if item.persist == false then hl_label = hl_label .. 'Ephemeral' end
+      table.insert(hl_spans, { hl_label, lnum, label_start, label_end })
       -- include colon and space then value
-      table.insert(hl_spans, { 'MegaTogglerValueText', lnum, label_end + 2, #line })
+      local hl_value = 'MegaTogglerValueText'
+      if item.persist == false then hl_value = hl_value .. 'Ephemeral' end
+      table.insert(hl_spans, { hl_value, lnum, label_end + 2, #line })
       -- record meta for inline edit: 1-based item index increments with loop
       state.render_line_meta[#state.render_line_meta + 1] = {
         kind = 'value',
