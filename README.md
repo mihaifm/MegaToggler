@@ -4,6 +4,7 @@ A Neovim plugin where you can toggle things on and off.
 
 - Floating dashboard with tabs and pretty checkboxes
 - Toggle editor features via configurable callbacks
+- Also edit text/numeric values (e.g., Tabstop: 4)
 - State persistence across sessions
 
 ## Install
@@ -14,9 +15,14 @@ Sample lazy.nvim installation below.
 
 MegaToggler does not come with any default items to be toggled. You will need to provide your own.
 
-For each item, you need to implement the following methods:
-- **get**: returns true or false depending on the state of the feature you're trying to toggle
-- **on_toggle**: callback for toggling the checkbox
+Item types:
+- Toggle items (booleans):
+  - `get()` returns true/false
+  - `on_toggle(checked)` applies the boolean
+- Value items (numbers/strings):
+  - `get()` returns the current value (number or string)
+  - `on_set(value)` applies the value
+  - Optional: `coerce(input_string) -> value`, `validate(value) -> ok, msg`
 
 Below is a sample configuration that can help you get started:
 
@@ -92,6 +98,23 @@ Below is a sample configuration that can help you get started:
             },
           },
         },
+        {
+          id = "settings",
+          label = "Settings",
+          items = {
+            {
+              id = 'tabstop',
+              label = 'Tabstop',
+              get = function() return vim.bo.tabstop end,
+              on_set = function(v) vim.bo.tabstop = v end,
+              -- optional helpers for input UX
+              coerce = function(s) return tonumber(s) or s end,
+              validate = function(v)
+                return type(v) == 'number' and v >= 1 and v <= 16, 'must be a number 1..16'
+              end,
+            },
+          }
+        },
       },
     })
   end,
@@ -133,7 +156,7 @@ The default config comes with nerd font icons. Override with ascii values if not
 - Command: `:MegaToggler` (toggles MegaToggler)
 - Movement: `j/k`, `<Up>/<Down>`, `gg/G`
 - Tabs: `h/l`, `<Left>/<Right>`, `Tab`/`<S-Tab>`
-- Toggle: `<CR>`, `<Space>`
+- Toggle/value edit: `<CR>`, `<Space>` (toggles booleans; prompts input for values)
 - Close: `q`, `<Esc>`
 
 Notes:
@@ -151,6 +174,7 @@ require("megatoggler").persist()
 require("megatoggler").add_item(tab_id, item)
 require("megatoggler").remove_item(tab_id, item_id)
 require("megatoggler").add_tab({ id, label, items = { ... } })
+require("megatoggler").set_value(tab_id, item_id, value) -- programmatic setter for value items
 ```
 
 ## Highlights

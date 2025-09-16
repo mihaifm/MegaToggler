@@ -46,6 +46,9 @@ local state = {
   prev_win = nil, -- window id active before opening dashboard
   prev_buf = nil, -- buffer id active before opening dashboard
   persisted = {},
+  render_line_meta = nil, -- per-render metadata for items (for value editing)
+  overlay_win = nil,
+  overlay_buf = nil,
 }
 
 -- Forward declaration for helper used before its definition
@@ -56,6 +59,9 @@ local persist_all_current_states
 
 -- Forward declaration for item_effective_state used before its definition
 local item_effective_state
+-- Forward declarations for value-item helpers
+local item_kind
+local item_current_value
 
 -- deepcopy: recursively copies tables to avoid mutating user-provided options
 local function deepcopy(tbl)
@@ -148,19 +154,25 @@ function persist_all_current_states()
     local tab_tbl = ns_tbl[tab.id]
     for _, item in ipairs(tab.items or {}) do
       if not item.disabled and item.persist ~= false and type(item.get) == 'function' then
-        local val = item_effective_state(tab, item)
-        tab_tbl[item.id] = val and true or false
+        local kind = item_kind(item)
+        if kind == 'toggle' then
+          local val = item_effective_state(tab, item)
+          tab_tbl[item.id] = val and true or false
+        else
+          local v = item_current_value(tab, item)
+          tab_tbl[item.id] = v
+        end
       end
     end
   end
   save_state()
 end
 
--- set_persist: saves a boolean for a given namespace/tab/item and writes file
+-- set_persist: saves a primitive value for a given namespace/tab/item and writes file
 local function set_persist(ns, tab_id, item_id, val)
   state.persisted[ns] = state.persisted[ns] or {}
   state.persisted[ns][tab_id] = state.persisted[ns][tab_id] or {}
-  state.persisted[ns][tab_id][item_id] = val and true or false
+  state.persisted[ns][tab_id][item_id] = val
   save_state()
 end
 
@@ -175,16 +187,19 @@ local function apply_persisted_states()
   local ns = state.config.persist_namespace or 'default'
   for _, tab in ipairs(state.config.tabs or {}) do
     for _, item in ipairs(tab.items or {}) do
-      if not item.disabled and item.persist ~= false and type(item.get) == 'function' and type(item.on_toggle) == 'function' then
+      if not item.disabled and item.persist ~= false and type(item.get) == 'function' then
         local pv = get_persist(ns, tab.id, item.id)
         if pv ~= nil then
-          local ok_get, cur = pcall(item.get)
-          if not ok_get then
-            vim.notify(string.format('MegaToggler: get() failed for %s: %s', item.label or item.id, cur), vim.log.levels.WARN)
-          else
-            local curb = not not cur
-            if pv ~= curb then
+          local cur = item_current_value(tab, item)
+          if pv ~= cur then
+            local kind = item_kind(item)
+            if kind == 'toggle' and type(item.on_toggle) == 'function' then
               local ok_cb, err = pcall(item.on_toggle, pv)
+              if not ok_cb then
+                vim.notify(string.format('MegaToggler: error applying persisted %s: %s', item.label or item.id, err), vim.log.levels.ERROR)
+              end
+            elseif kind == 'value' and type(item.on_set) == 'function' then
+              local ok_cb, err = pcall(item.on_set, pv)
               if not ok_cb then
                 vim.notify(string.format('MegaToggler: error applying persisted %s: %s', item.label or item.id, err), vim.log.levels.ERROR)
               end
@@ -207,6 +222,29 @@ local function get_icons(item)
   }
 end
 
+-- Item kinds: 'toggle' (boolean) or 'value' (text/numeric)
+item_kind = function(item)
+  if item.type == 'value' then return 'value' end
+  if item.type == 'toggle' then return 'toggle' end
+  if type(item.on_set) == 'function' then return 'value' end
+  return 'toggle'
+end
+
+-- Retrieve current value for an item, running in target window when possible
+item_current_value = function(tab, item)
+  local ok, cur
+  if state.win and vim.api.nvim_win_is_valid(state.win) then
+    ok, cur = with_target_window(item.get)
+  else
+    ok, cur = pcall(item.get)
+  end
+  if not ok then
+    vim.notify(string.format('MegaToggler: get() failed for %s: %s', item.label or item.id, cur), vim.log.levels.WARN)
+    return nil
+  end
+  return cur
+end
+
 -- Convenience helpers for current tab and item state resolution
 local function current_tab_conf()
   return state.config.tabs[state.current_tab]
@@ -222,17 +260,8 @@ local function find_tab(tab_id)
 end
 
 function item_effective_state(tab, item)
-  -- Effective state for UI is whatever get() reports on the target window.
-  local ok, cur
-  if state.win and vim.api.nvim_win_is_valid(state.win) then
-    ok, cur = with_target_window(item.get)
-  else
-    ok, cur = pcall(item.get)
-  end
-  if not ok then
-    vim.notify(string.format('MegaToggler: get() failed for %s: %s', item.label or item.id, cur), vim.log.levels.WARN)
-    return false
-  end
+  -- For toggle items, normalize get() to boolean.
+  local cur = item_current_value(tab, item)
   return not not cur
 end
 
@@ -322,6 +351,8 @@ local function ensure_highlight_defaults()
   try('highlight default link MegaTogglerItemOff Comment')
   try('highlight default link MegaTogglerDesc Comment')
   try('highlight default link MegaTogglerHint NonText')
+  try('highlight default link MegaTogglerValueLabel Identifier')
+  try('highlight default link MegaTogglerValueText Normal')
 end
 
 -- build_tabline: produce the tabline string (line 1) and highlight spans
@@ -349,6 +380,7 @@ local function render()
 
   local lines = {}
   local hl_spans = {}
+  state.render_line_meta = {}
 
   -- Tabline (line 1)
   local tabline, tab_spans = build_tabline(state.current_tab)
@@ -362,22 +394,47 @@ local function render()
   local tab = current_tab_conf()
   local icons_default = get_icons()
   for _, item in ipairs(tab.items or {}) do
-    local checked = item_effective_state(tab, item)
-    local icons = get_icons(item)
-    local icon = checked and (icons.checked or icons_default.checked) or (icons.unchecked or icons_default.unchecked)
-    local label = item.label or item.id
-    local desc = item.desc and (' — ' .. item.desc) or ''
-    local line = string.format('%s %s%s', icon, label, desc)
-    table.insert(lines, line)
+    local kind = item_kind(item)
+    if kind == 'toggle' then
+      local checked = item_effective_state(tab, item)
+      local icons = get_icons(item)
+      local icon = checked and (icons.checked or icons_default.checked) or (icons.unchecked or icons_default.unchecked)
+      local label = item.label or item.id
+      local desc = item.desc and (' — ' .. item.desc) or ''
+      local line = string.format('%s %s%s', icon, label, desc)
+      table.insert(lines, line)
 
-    local lnum = #lines - 1 -- 0-based for highlights
-    -- Highlight icon+label differently depending on state
-    local ico_end = #icon
-    local label_end = ico_end + 1 + #label
-    table.insert(hl_spans, { checked and 'MegaTogglerItemOn' or 'MegaTogglerItemOff', lnum, 0, label_end })
-    if desc ~= '' then
-      table.insert(hl_spans, { 'MegaTogglerDesc', lnum, label_end, label_end + #desc })
+      local lnum = #lines - 1 -- 0-based for highlights
+      local ico_end = #icon
+      local label_end = ico_end + 1 + #label
+      table.insert(hl_spans, { checked and 'MegaTogglerItemOn' or 'MegaTogglerItemOff', lnum, 0, label_end })
+      if desc ~= '' then
+        table.insert(hl_spans, { 'MegaTogglerDesc', lnum, label_end, label_end + #desc })
+      end
+    else
+      local label = item.label or item.id
+      local value = item_current_value(tab, item)
+      local value_str = tostring(value)
+      local line = string.format('%s: %s', label, value_str)
+      table.insert(lines, line)
+      local lnum = #lines - 1
+      local label_end = #label
+      -- label
+      table.insert(hl_spans, { 'MegaTogglerValueLabel', lnum, 0, label_end })
+      -- include colon and space then value
+      table.insert(hl_spans, { 'MegaTogglerValueText', lnum, label_end + 2, #line })
+      -- record meta for inline edit: 1-based item index increments with loop
+      state.render_line_meta[#state.render_line_meta + 1] = {
+        kind = 'value',
+        lnum = lnum, -- 0-based buffer row
+        value_start = label_end + 2, -- 0-based start col of value
+        value_len = #value_str,
+      }
+      goto continue
     end
+    -- record meta for non-value items to keep indices aligned
+    state.render_line_meta[#state.render_line_meta + 1] = { kind = 'toggle' }
+    ::continue::
   end
 
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
@@ -454,6 +511,14 @@ end
 
 -- close: tear down the floating window and scratch buffer
 function M.close()
+  if state.overlay_win and vim.api.nvim_win_is_valid(state.overlay_win) then
+    pcall(vim.api.nvim_win_close, state.overlay_win, true)
+  end
+  if state.overlay_buf and vim.api.nvim_buf_is_valid(state.overlay_buf) then
+    pcall(vim.api.nvim_buf_delete, state.overlay_buf, { force = true })
+  end
+  state.overlay_win = nil
+  state.overlay_buf = nil
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     pcall(vim.api.nvim_win_close, state.win, true)
   end
@@ -515,7 +580,14 @@ function M._toggle_at_cursor()
   local pos = vim.api.nvim_win_get_cursor(state.win)
   local lnum = pos[1] -- 1-based
   local idx = lnum - 2 -- items start at buffer line 3
-  M._toggle_by_index(idx, lnum)
+  local tab = current_tab_conf()
+  local item = tab and tab.items and tab.items[idx]
+  if not item then return end
+  if item_kind(item) == 'value' then
+    M._edit_value_by_index(idx, lnum)
+  else
+    M._toggle_by_index(idx, lnum)
+  end
 end
 
 -- _toggle_by_index: toggle item by index; run callback; persist; re-render
@@ -524,6 +596,7 @@ function M._toggle_by_index(idx, keep_cursor_lnum)
   local tab = current_tab_conf()
   local item = tab and tab.items and tab.items[idx]
   if not item or item.disabled then return end
+  if item_kind(item) ~= 'toggle' then return end
   local checked = item_effective_state(tab, item)
   local new_checked = not checked
   -- Switch to the previously active window to apply buffer/window-local opts
@@ -565,11 +638,151 @@ function M._toggle_by_index(idx, keep_cursor_lnum)
   end
 end
 
+-- Edit a value item by index using vim.ui.input; applies coerce/validate if provided
+function M._edit_value_by_index(idx, keep_cursor_lnum)
+  if not idx or idx < 1 then return end
+  local tab = current_tab_conf()
+  local item = tab and tab.items and tab.items[idx]
+  if not item or item.disabled then return end
+  if item_kind(item) ~= 'value' then return end
+
+  local cur_val = item_current_value(tab, item)
+  local default_text = cur_val ~= nil and tostring(cur_val) or ''
+
+  local function apply_value(val)
+    local cur_win = vim.api.nvim_get_current_win()
+    local target_win = nil
+    if state.prev_win and vim.api.nvim_win_is_valid(state.prev_win) then
+      target_win = state.prev_win
+    else
+      for _, w in ipairs(vim.api.nvim_list_wins()) do
+        if w ~= state.win then
+          local cfg = vim.api.nvim_win_get_config(w)
+          if not cfg or cfg.relative == '' then target_win = w break end
+        end
+      end
+    end
+    if target_win and vim.api.nvim_win_is_valid(target_win) then
+      pcall(vim.api.nvim_set_current_win, target_win)
+    end
+    local ok, err = pcall(item.on_set, val)
+    if cur_win and vim.api.nvim_win_is_valid(cur_win) then
+      pcall(vim.api.nvim_set_current_win, cur_win)
+      enforce_toggler_winopts(cur_win)
+    end
+    if not ok then
+      vim.notify(string.format('MegaToggler: error setting %s: %s', item.label or item.id, err), vim.log.levels.ERROR)
+      return
+    end
+    if item.persist ~= false then
+      set_persist(state.config.persist_namespace or 'default', tab.id, item.id, val)
+    end
+    render()
+    if keep_cursor_lnum and state.win and vim.api.nvim_win_is_valid(state.win) then
+      vim.api.nvim_win_set_cursor(state.win, { keep_cursor_lnum, 0 })
+    end
+  end
+
+  -- Use a 1-line overlay floating window positioned at the value text
+  local meta = state.render_line_meta and state.render_line_meta[idx]
+  if not meta or meta.kind ~= 'value' then return end
+  -- Close any existing overlay first
+  if state.overlay_win and vim.api.nvim_win_is_valid(state.overlay_win) then
+    pcall(vim.api.nvim_win_close, state.overlay_win, true)
+  end
+  if state.overlay_buf and vim.api.nvim_buf_is_valid(state.overlay_buf) then
+    pcall(vim.api.nvim_buf_delete, state.overlay_buf, { force = true })
+  end
+  state.overlay_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[state.overlay_buf].buftype = 'nofile'
+  vim.bo[state.overlay_buf].bufhidden = 'wipe'
+  vim.bo[state.overlay_buf].swapfile = false
+  vim.bo[state.overlay_buf].modifiable = true
+  vim.bo[state.overlay_buf].filetype = 'megatoggler_input'
+  vim.api.nvim_buf_set_lines(state.overlay_buf, 0, -1, false, { default_text })
+
+  local win_cfg = vim.api.nvim_win_get_config(state.win)
+  local parent_width = win_cfg and win_cfg.width or (state.config.ui and state.config.ui.width) or 60
+  local available = math.max(1, parent_width - meta.value_start)
+  local wopts = {
+    relative = 'win',
+    win = state.win,
+    row = meta.lnum,
+    col = meta.value_start,
+    width = available,
+    height = 1,
+    style = 'minimal',
+    border = 'none',
+    zindex = (state.config.ui and state.config.ui.zindex or 200) + 1,
+    noautocmd = true,
+  }
+  state.overlay_win = vim.api.nvim_open_win(state.overlay_buf, true, wopts)
+  enforce_toggler_winopts(state.overlay_win)
+  vim.wo[state.overlay_win].winhl = ''
+  vim.wo[state.overlay_win].cursorline = false
+
+  local function finish(commit)
+    local txt = default_text
+    if commit then
+      local lines = vim.api.nvim_buf_get_lines(state.overlay_buf, 0, 1, false)
+      txt = lines[1] or ''
+    end
+    if state.overlay_win and vim.api.nvim_win_is_valid(state.overlay_win) then
+      pcall(vim.api.nvim_win_close, state.overlay_win, true)
+    end
+    if state.overlay_buf and vim.api.nvim_buf_is_valid(state.overlay_buf) then
+      pcall(vim.api.nvim_buf_delete, state.overlay_buf, { force = true })
+    end
+    state.overlay_win, state.overlay_buf = nil, nil
+    if state.win and vim.api.nvim_win_is_valid(state.win) then
+      pcall(vim.api.nvim_set_current_win, state.win)
+      enforce_toggler_winopts(state.win)
+      if keep_cursor_lnum then pcall(vim.api.nvim_win_set_cursor, state.win, { keep_cursor_lnum, 0 }) end
+    end
+    if commit then
+      local val
+      if type(item.coerce) == 'function' then
+        local okc, coerced = pcall(item.coerce, txt)
+        val = okc and coerced or txt
+      else
+        local n = tonumber(txt)
+        val = n ~= nil and n or txt
+      end
+      if type(item.validate) == 'function' then
+        local okv, msg = item.validate(val)
+        if not okv then
+          vim.notify(string.format('MegaToggler: invalid value for %s%s', item.label or item.id, msg and (': ' .. tostring(msg)) or ''), vim.log.levels.WARN)
+          return
+        end
+      end
+      apply_value(val)
+    end
+  end
+
+  local map_opts = { buffer = state.overlay_buf, nowait = true, noremap = true, silent = true }
+  vim.keymap.set('n', '<CR>', function() finish(true) end, map_opts)
+  vim.keymap.set('n', '<Esc>', function() finish(false) end, map_opts)
+  vim.keymap.set('i', '<CR>', function() finish(true) end, map_opts)
+  vim.keymap.set('i', '<Esc>', function() finish(false) end, map_opts)
+
+  -- Enter insert for natural typing UX
+  -- Place cursor at end for quick backspacing/overwrite
+  local end_col = #default_text
+  pcall(vim.api.nvim_win_set_cursor, state.overlay_win, { 1, end_col })
+  vim.cmd.startinsert()
+  -- Ensure placement after mode switch (some UIs move cursor on startinsert)
+  vim.defer_fn(function()
+    if state.overlay_win and vim.api.nvim_win_is_valid(state.overlay_win) then
+      pcall(vim.api.nvim_win_set_cursor, state.overlay_win, { 1, end_col })
+    end
+  end, 10)
+end
+
 -- Setup and config
 function M.setup(opts)
   local cfg = merge(defaults, opts or {})
   assert(type(cfg.tabs) == 'table' and #cfg.tabs > 0, 'mega_toggler.setup: opts.tabs required')
-  -- normalize tabs/items and validate IDs; require get() and on_toggle()
+  -- normalize tabs/items and validate IDs; require get() and on_toggle()/on_set
   local seen_tab = {}
   for ti, tab in ipairs(cfg.tabs) do
     assert(tab.id and type(tab.id) == 'string', 'Tab at index ' .. ti .. ' must have string id')
@@ -585,8 +798,10 @@ function M.setup(opts)
         vim.notify('MegaToggler: duplicate item id in tab ' .. tab.id .. ': ' .. item.id .. ' (ignoring)', vim.log.levels.WARN)
       elseif type(item.get) ~= 'function' then
         vim.notify('MegaToggler: item ' .. item.id .. ' missing get(); ignoring', vim.log.levels.WARN)
-      elseif type(item.on_toggle) ~= 'function' then
+      elseif item_kind(item) == 'toggle' and type(item.on_toggle) ~= 'function' then
         vim.notify('MegaToggler: item ' .. item.id .. ' missing on_toggle(); ignoring', vim.log.levels.WARN)
+      elseif item_kind(item) == 'value' and type(item.on_set) ~= 'function' then
+        vim.notify('MegaToggler: item ' .. item.id .. ' missing on_set(); ignoring', vim.log.levels.WARN)
       else
         seen_item[item.id] = true
         table.insert(filtered, item)
@@ -615,6 +830,40 @@ function M.persist()
   persist_all_current_states()
 end
 
+-- Programmatic API to set a value item without UI
+function M.set_value(tab_id, item_id, value)
+  assert(type(tab_id) == 'string' and #tab_id > 0, 'set_value: tab_id must be a non-empty string')
+  assert(type(item_id) == 'string' and #item_id > 0, 'set_value: item_id must be a non-empty string')
+  local ti, tab = find_tab(tab_id)
+  assert(tab, 'set_value: tab id not found: ' .. tostring(tab_id))
+  local item
+  for _, it in ipairs(tab.items or {}) do
+    if it.id == item_id then item = it break end
+  end
+  assert(item, 'set_value: item id not found in tab ' .. tab_id .. ': ' .. item_id)
+  assert(item_kind(item) == 'value', 'set_value: item is not a value item')
+
+  -- Optional validation
+  if type(item.validate) == 'function' then
+    local okv, msg = item.validate(value)
+    assert(okv, 'set_value: invalid value' .. (msg and (': ' .. tostring(msg)) or ''))
+  end
+
+  local ok_cb, err = with_target_window(function()
+    return item.on_set(value)
+  end)
+  if not ok_cb then
+    error('set_value error for ' .. (item.label or item.id) .. ': ' .. tostring(err))
+  end
+  if item.persist ~= false then
+    set_persist(state.config.persist_namespace or 'default', tab.id, item.id, value)
+  end
+  if state.win and vim.api.nvim_win_is_valid(state.win) and state.current_tab == ti then
+    render()
+  end
+  return true
+end
+
 -- add_item: append a validated item to a given tab by id
 -- Respects per-item persist flag: if a persisted value exists, applies it.
 function M.add_item(tab_id, item)
@@ -638,9 +887,17 @@ function M.add_item(tab_id, item)
     vim.notify('MegaToggler: item ' .. item.id .. ' missing get(); ignoring', vim.log.levels.WARN)
     return false
   end
-  if type(item.on_toggle) ~= 'function' then
-    vim.notify('MegaToggler: item ' .. item.id .. ' missing on_toggle(); ignoring', vim.log.levels.WARN)
-    return false
+  local kind = item_kind(item)
+  if kind == 'toggle' then
+    if type(item.on_toggle) ~= 'function' then
+      vim.notify('MegaToggler: item ' .. item.id .. ' missing on_toggle(); ignoring', vim.log.levels.WARN)
+      return false
+    end
+  else
+    if type(item.on_set) ~= 'function' then
+      vim.notify('MegaToggler: item ' .. item.id .. ' missing on_set(); ignoring', vim.log.levels.WARN)
+      return false
+    end
   end
 
   tab.items = tab.items or {}
@@ -651,10 +908,10 @@ function M.add_item(tab_id, item)
     local ns = state.config.persist_namespace or 'default'
     local pv = get_persist(ns, tab.id, item.id)
     if pv ~= nil then
-      local cur = item_effective_state(tab, item)
+      local cur = item_current_value(tab, item)
       if pv ~= cur then
         local ok_cb, err = with_target_window(function()
-          return item.on_toggle(pv)
+          if item_kind(item) == 'toggle' then return item.on_toggle(pv) else return item.on_set(pv) end
         end)
         if not ok_cb then
           vim.notify(string.format('MegaToggler: error applying persisted %s: %s', item.label or item.id, err), vim.log.levels.ERROR)
@@ -706,8 +963,10 @@ function M.add_tab(tab)
       vim.notify('MegaToggler: duplicate item id in tab ' .. tab.id .. ': ' .. item.id .. ' (ignoring)', vim.log.levels.WARN)
     elseif type(item.get) ~= 'function' then
       vim.notify('MegaToggler: item ' .. tostring(item.id) .. ' missing get(); ignoring', vim.log.levels.WARN)
-    elseif type(item.on_toggle) ~= 'function' then
+    elseif item_kind(item) == 'toggle' and type(item.on_toggle) ~= 'function' then
       vim.notify('MegaToggler: item ' .. tostring(item.id) .. ' missing on_toggle(); ignoring', vim.log.levels.WARN)
+    elseif item_kind(item) == 'value' and type(item.on_set) ~= 'function' then
+      vim.notify('MegaToggler: item ' .. tostring(item.id) .. ' missing on_set(); ignoring', vim.log.levels.WARN)
     else
       seen_item[item.id] = true
       table.insert(filtered, item)
