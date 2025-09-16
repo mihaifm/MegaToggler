@@ -737,7 +737,12 @@ function M._edit_value_by_index(idx, keep_cursor_lnum)
     end
     local position = { row = meta.lnum - 1, col = meta.value_start - 1 }
     local width = ((vim.api.nvim_win_get_config(state.win) or {}).width) or (state.config.ui and state.config.ui.width) or 60
-    local size = { width = math.max(1, width - meta.value_start) }
+    local base_width = math.max(1, width - meta.value_start)
+    local desired = base_width
+    if type(item.edit_size) == 'number' and item.edit_size > 0 then
+      desired = math.min(base_width, item.edit_size)
+    end
+    local size = { width = desired }
     local border_style = (state.config.ui and state.config.ui.border) or 'none'
     local opts = {
       relative = 'win',
@@ -823,6 +828,9 @@ function M._edit_value_by_index(idx, keep_cursor_lnum)
   local border_style = (state.config.ui and state.config.ui.border) or 'none'
   local has_border = border_style ~= 'none' and border_style ~= ''
   local content_width = math.max(1, available - (has_border and 2 or 0))
+  if type(item.edit_size) == 'number' and item.edit_size > 0 then
+    content_width = math.min(content_width, item.edit_size)
+  end
   local wopts = {
     relative = 'win',
     win = state.win,

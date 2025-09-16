@@ -23,6 +23,7 @@ Item types:
 - Value items (numbers/strings):
   - `get()` returns the current value (number or string)
   - `on_set(value)` applies the value
+  - `edit_size` (number, optional): width of the inline input when editing
   - Optional: `coerce(input_string) -> value`, `validate(value) -> ok, msg`
 
 Below is a sample configuration that can help you get started:
