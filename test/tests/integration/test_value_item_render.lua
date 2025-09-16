@@ -22,15 +22,15 @@ local initial = vim.bo.tabstop
 mt.open()
 vim.wait(30)
 
--- Verify initial render contains "Tabstop: <value>"
+-- Verify initial render contains "Tabstop  <value>"
 local line = item_line()
-assert(line:find('Tabstop: ' .. tostring(initial), 1, true), 'Expected value line to show current tabstop')
+assert(line:find('Tabstop  ' .. tostring(initial), 1, true), 'Expected value line to show current tabstop')
 
 -- Change value programmatically and check UI updates
 mt.set_value('editor', 'tabstop', initial + 1)
 vim.wait(20)
 local line2 = item_line()
-assert(line2:find('Tabstop: ' .. tostring(initial + 1), 1, true), 'Expected value line to update after set_value')
+assert(line2:find('Tabstop  ' .. tostring(initial + 1), 1, true), 'Expected value line to update after set_value')
 
 -- Restore
 mt.set_value('editor', 'tabstop', initial)
