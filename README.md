@@ -173,7 +173,6 @@ Notes:
 require("megatoggler").open()
 require("megatoggler").close()
 require("megatoggler").toggle()
-require("megatoggler").refresh()
 require("megatoggler").persist()
 require("megatoggler").add_item(tab_id, item)
 require("megatoggler").remove_item(tab_id, item_id)

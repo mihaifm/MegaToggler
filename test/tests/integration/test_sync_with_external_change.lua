@@ -70,8 +70,6 @@ assert(external == (not after_toggle), 'External change should invert the value'
 -- 6) Reopen MegaToggler - it should sync to current value
 mt.open()
 vim.wait(30)
-mt.next_tab()
-vim.wait(20)
 local l2 = item_line()
 local expected_icon2 = external and '[x]' or '[ ]'
 assert(l2:sub(1, #expected_icon2) == expected_icon2, 'UI should sync with external option value on reopen')

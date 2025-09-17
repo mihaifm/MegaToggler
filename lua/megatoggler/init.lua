@@ -588,11 +588,6 @@ function M.toggle()
   end
 end
 
--- refresh: re-render the current tab
-function M.refresh()
-  render()
-end
-
 -- next_tab: cycle to the next tab (wrap)
 function M.next_tab()
   if not state.config or #(state.config.tabs) == 0 then return end
