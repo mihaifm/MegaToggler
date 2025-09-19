@@ -202,30 +202,83 @@ function M.stop()
 end
 
 local function analyze_file(path, fdata)
-  local fh = io.open(path, 'r')
-  if not fh then return end
+  -- Prefer executable lines determined by debug info (top-level + exported funcs)
+  local ok_lf, chunk = pcall(loadfile, path)
+  if ok_lf and type(chunk) == 'function' then
+    -- Top-level chunk activelines
+    local ok_info, info = pcall(debug.getinfo, chunk, 'L')
+    if ok_info and info and type(info.activelines) == 'table' then
+      fdata.exec_lines = fdata.exec_lines or {}
+      for ln, active in pairs(info.activelines) do if active then fdata.exec_lines[ln] = true end end
+    end
 
-  local n = 0
-  for line in fh:lines() do
-    n = n + 1
-    local s = line:match('^%s*(.*)$') or ''
+    -- Also attempt to execute the chunk to get module table and include function activelines
+    local ok_run, mod = pcall(chunk)
+    if ok_run and type(mod) == 'table' then
+      for _, fn in pairs(mod) do
+        if type(fn) == 'function' then
+          local ok_si, si = pcall(debug.getinfo, fn, 'SL')
 
-    if s == '' or s:sub(1,2) == '--' then
-      fdata.non_code[n] = true
+          if ok_si and si and type(si) == 'table' and type(si.source) == 'string' then
+            local src = si.source
+            if src:sub(1,1) == '@' then src = src:sub(2) end
+            if src == path then
+              -- Mark activelines for this function; if unavailable, mark defined range
+              local ok_fl, fl = pcall(debug.getinfo, fn, 'L')
+              if ok_fl and fl and type(fl.activelines) == 'table' then
+                fdata.exec_lines = fdata.exec_lines or {}
+                for ln, active in pairs(fl.activelines) do if active then fdata.exec_lines[ln] = true end end
+              else
+                if type(si.linedefined) == 'number' and type(si.lastlinedefined) == 'number' then
+                  fdata.exec_lines = fdata.exec_lines or {}
+                  for ln = si.linedefined, si.lastlinedefined do fdata.exec_lines[ln] = true end
+                end
+              end
+            end
+          end
+        end
+      end
     end
   end
-  fh:close()
-  fdata.total_lines = n
+
+  -- Also record simple non-code lines and total lines for fallback
+  local fh = io.open(path, 'r')
+  if fh then
+    local n = 0
+    for line in fh:lines() do
+      n = n + 1
+      local s = line:match('^%s*(.*)$') or ''
+      if s == '' or s:sub(1,2) == '--' then
+        fdata.non_code[n] = true
+      end
+    end
+    fh:close()
+    fdata.total_lines = n
+  end
 end
 
 local function summarize(path, fdata)
   if not fdata.total_lines then analyze_file(path, fdata) end
 
   local total, covered, miss = 0, 0, {}
-  for i = 1, (fdata.total_lines or 0) do
-    if not fdata.non_code[i] then
-      total = total + 1
-      if fdata.executed[i] then covered = covered + 1 else miss[#miss+1] = i end
+  if fdata.exec_lines and next(fdata.exec_lines) ~= nil then
+    -- Count only actual executable lines
+    local lines = {}
+    for ln, _ in pairs(fdata.exec_lines) do lines[#lines+1] = ln end
+
+    table.sort(lines)
+
+    total = #lines
+    for _, ln in ipairs(lines) do
+      if fdata.executed[ln] then covered = covered + 1 else miss[#miss+1] = ln end
+    end
+  else
+    -- Fallback heuristic
+    for i = 1, (fdata.total_lines or 0) do
+      if not fdata.non_code[i] then
+        total = total + 1
+        if fdata.executed[i] then covered = covered + 1 else miss[#miss+1] = i end
+      end
     end
   end
 
