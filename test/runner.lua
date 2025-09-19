@@ -1,4 +1,3 @@
--- Minimal test runner
 -- Run all tests with: nvim --headless --clean -u test/runner.lua
 
 -- Ensure current repo is on runtimepath (so `require('megatoggler')` works)
@@ -8,19 +7,6 @@ vim.opt.rtp:prepend(root)
 -- Quiet down UI for headless
 vim.o.more = false
 vim.o.swapfile = false
-
--- Normalize print to write to stdout with newline + flush to avoid mixing
-local function normalize_print()
-  ---@diagnostic disable-next-line
-  _G.print = function(...)
-    local parts = {}
-    for i = 1, select('#', ...) do
-      parts[#parts + 1] = tostring(select(i, ...))
-    end
-    io.stdout:write(table.concat(parts, '\t') .. '\n')
-    io.stdout:flush()
-  end
-end
 
 -- Get directory of current script
 local function script_dir()
@@ -73,7 +59,8 @@ local function run_file(path)
 end
 
 local function main()
-  normalize_print()
+  local coverage = require('test.coverage')
+  coverage.start()
 
   local tests = read_tests()
 
@@ -81,6 +68,9 @@ local function main()
   for _, t in ipairs(tests) do
     if run_file(t) then passed = passed + 1 else failed = failed + 1 end
   end
+
+  coverage.stop()
+  coverage.report()
 
   print(string.format('\nSummary: %d passed, %d failed, %d total', passed, failed, #tests), '\n')
 
