@@ -2,6 +2,10 @@
 
 **MegaToggler** is a Neovim plugin where you can toggle or modify editor options in a visual interface, via user-defined setup.
 
+<img width="589" height="367" alt="image" src="https://github.com/user-attachments/assets/4af3b07d-788a-45c8-bcd3-35508de6e0ee" />
+
+<img width="591" height="364" alt="image" src="https://github.com/user-attachments/assets/2789784b-7156-4379-ba26-51be382ea38b" />
+
 ## Features
 
 - Floating dashboard with tabs and checkboxes
