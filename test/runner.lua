@@ -1,4 +1,6 @@
--- Run all tests with: nvim --headless --clean -u test/runner.lua
+-- Run all tests with either: 
+-- nvim --headless --clean -u test/runner.lua
+-- make test
 
 -- Ensure current repo is on runtimepath (so `require('megatoggler')` works)
 local root = vim.fn.fnamemodify(vim.fn.getcwd(), ':p')

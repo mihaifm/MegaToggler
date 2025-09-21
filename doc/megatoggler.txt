@@ -1,0 +1,315 @@
+*megatoggler.txt*  MegaToggler — Toggle dashboard for Neovim
+
+===============================================================================
+CONTENTS                                                   *megatoggler-contents*
+
+  1. Introduction .................................. |megatoggler-intro|
+  2. Requirements & Install ........................ |megatoggler-install|
+  3. Quickstart .................................... |megatoggler-quickstart|
+  4. Usage ......................................... |megatoggler-usage|
+  5. Items (toggle/value) .......................... |megatoggler-items|
+  6. Configuration ................................. |megatoggler-config|
+  7. Persistence ................................... |megatoggler-persist|
+  8. Value Input Providers ......................... |megatoggler-input|
+  9. API ........................................... |megatoggler-api|
+ 10. Highlights .................................... |megatoggler-highlights|
+ 11. Notes ......................................... |megatoggler-notes|
+
+===============================================================================
+INTRODUCTION                                                *megatoggler-intro*
+
+MegaToggler is a Neovim plugin that opens a floating dashboard where
+you can toggle boolean options and edit simple values. It does not provide
+any options to toggle by default, instead the user needs to write their own
+setup to populate the dashboard.
+
+Key features:
+- Floating dashboard with tabs and pretty checkboxes
+- Toggle editor features via user-defined callbacks
+- Optional state persistence across sessions
+
+===============================================================================
+REQUIREMENTS & INSTALL                                    *megatoggler-install*
+
+Requirements:
+- Neovim 0.11+
+
+Install (lazy.nvim):
+>
+  {
+    "mihaifm/megatoggler",
+    config = function()
+      require("megatoggler").setup({
+        -- setup a tab with a checkbox to toggle line numbers
+        tabs = {
+          {
+            id = "editor",
+            label = "Editor",
+            items = {
+              {
+                id = "number",
+                label = "Line Numbers",
+                persist = false,
+                get = function() return vim.wo.number end,
+                on_toggle = function(on) vim.wo.number = on end,
+              }
+            }
+          }
+        }
+      })
+    end
+  }
+<
+
+===============================================================================
+QUICKSTART                                              *megatoggler-quickstart*
+
+MegaToggler ships with no default items. You define items (grouped into tabs)
+in `setup()`. Items can be toggles (boolean) or values (number/string).
+
+Comprehensive example below:
+>
+  require("megatoggler").setup({
+    tabs = {
+      {
+        -- global options you might want to persist
+        id = "Globals",
+        items = {
+          {
+            id = "Ignore Case",
+            -- all items must define a get method
+            get = function() return vim.o.ignorecase end,
+            -- items with boolean value must define on_toggle
+            on_toggle = function(on) vim.o.ignorecase = on end,
+          },
+          {
+            id = "Tabstop",
+            label = "Tab Stop", -- optional label
+            desc = "Tab size", -- optional description
+            get = function()
+              -- use opt_global for vim options you want to persist
+              return vim.opt_global.tabstop:get()
+            end,
+            -- items with numeric/string value must define on_set
+            on_set = function(v)
+              vim.opt_global.tabstop = v
+            end,
+            -- size of the textbox when editing
+            edit_size = 3
+          },
+          {
+            id = "Expand Tab",
+            get = function() return vim.opt_global.expandtab:get() end,
+            on_toggle = function(on) vim.opt_global.expandtab = on end,
+          },
+          {
+            id = "Inc Command",
+            get = function() return vim.o.inccommand end,
+            on_set = function(v) vim.o.inccommand = v end,
+            edit_size = 10
+          },
+        }
+      },
+      {
+        -- local options you might want to toggle but not persist
+        id = "Local",
+        items = {
+          {
+            id = 'Tabstop',
+            -- disable persistance for buffer-local options
+            persist = false,
+            get = function() return vim.bo.tabstop end,
+            on_set = function(v) vim.bo.tabstop = v end
+          }
+        }
+      },
+      {
+        -- toggle features provided by other plugins
+        id = "Features",
+        items = {
+          {
+            id = 'Render Markdown',
+            get = function() return require('render-markdown').get() end,
+            on_toggle = function() require('render-markdown').toggle() end,
+          },
+          {
+            id = "Neotree",
+            get = function()
+              -- check if Neotree is loaded in window
+              for _, win in ipairs(vim.api.nvim_list_wins()) do
+                local buf = vim.api.nvim_win_get_buf(win)
+                if vim.bo[buf].filetype == 'neo-tree' then
+                  return true
+                end
+              end
+              return false
+            end,
+            on_toggle = function()
+              vim.cmd("Neotree toggle")
+            end
+          },
+          {
+            id = "Autopairs",
+            get = function()
+              -- check if plugin is loaded by Lazy
+              -- only needed if you lazy load the plugin
+              local lc = require("lazy.core.config")
+              if not (lc.plugins["nvim-autopairs"] and lc.plugins["nvim-autopairs"]._.loaded) then
+                return false
+              end
+
+              return not require("nvim-autopairs").state.disabled
+            end,
+            on_toggle = function(on)
+              -- avoid lazy loading the plugin if on == false
+              if on == false then
+                local lc = require("lazy.core.config")
+                if not (lc.plugins["nvim-autopairs"] and lc.plugins["nvim-autopairs"]._.loaded) then
+                  return
+                end
+              end
+
+              if on then
+                require("nvim-autopairs").enable()
+              else
+                require("nvim-autopairs").disable()
+              end
+            end
+          },
+          {
+            id = "Smooth scrolling",
+            -- disable persistance when it's difficult to get the plugin's internal state
+            persist = false,
+            get = function() return true end,
+            on_toggle = function() vim.cmd("ToggleNeoscroll") end,
+            -- set custom icons for plugins where it's difficult to get the state
+            icons = { checked = "", unchecked = "" },
+          },
+        }
+      }
+    }
+  })
+<
+===============================================================================
+USAGE                                                        *megatoggler-usage*
+
+Command:
+    :MegaToggler   Toggle the MegaToggler dashboard (single instance)
+
+Movement (buffer-local):
+    j/k, <Up>/<Down>, gg/G          Move selection
+    h/l, <Left>/<Right>             Switch tabs
+    <Tab>/<S-Tab>                   Next / previous tab
+
+Actions:
+    <CR>, <Space>                   Toggle booleans; edit values inline
+    q, <Esc>                        Close dashboard
+
+Notes:
+- Invoking :MegaToggler again closes the current instance.
+- Actions apply to the previously active window/buffer (target window), so
+  window-local options (e.g. relativenumber) behave correctly.
+
+===============================================================================
+ITEMS (TOGGLE / VALUE)                                     *megatoggler-items*
+
+Toggle items (booleans):
+    Required fields:
+      id (string),
+      get() -> boolean,
+      on_toggle(checked: boolean)
+
+Value items (numbers/strings):
+    Required fields:
+      id (string),
+      get() -> number|string,
+      on_set(value: number|string)
+    Optional fields:
+      label (string)               If omitted, the item's `id` is shown
+      edit_size (number)            Width of inline input
+      coerce(input: string) -> any  Convert text to value (default: tonumber or id)
+      validate(value) -> ok,msg     Return false,msg to reject value
+
+Common optional per-item fields:
+      label (string)               If omitted, the item's `id` is shown
+      disabled (boolean)            If true, render dim and ignore toggles
+      persist (boolean)             If false, do not save/restore this item
+      padding (string|number)       Left padding; number repeats global padding
+      icons = { checked, unchecked } Override checkbox icons per item
+
+===============================================================================
+CONFIGURATION                                             *megatoggler-config*
+
+Defaults:
+>
+  require('megatoggler').setup({
+    ui = {
+      width = 60,
+      height = 18,
+      border = 'rounded',          -- also used by overlay input
+      value_input = 'overlay',     -- 'overlay' | 'nui' (requires nui.nvim)
+      padding = '  ',              -- global left padding for items
+      icons = { checked = '', unchecked = '' },
+    },
+    persist = true,
+    persist_namespace = 'default',
+    persist_file = stdpath('state') .. '/megatoggler/state.json',
+    tabs = {},                     -- user-provided
+  })
+
+If you do not use a Nerd Font, override icons:
+>
+  ui = { icons = { checked = '[x]', unchecked = '[ ]' } }
+
+===============================================================================
+PERSISTENCE                                               *megatoggler-persist*
+
+Storage:
+    File path (default): |vim.fn.stdpath|('state') .. '/megatoggler/state.json'
+    Structure: namespace → tab.id → item.id → primitive (bool/number/string)
+
+Behavior:
+    - On setup(), if a persisted value exists and differs from get(), the
+      plugin applies it via on_toggle() / on_set().
+    - Snapshot of all items is saved when the dashboard opens and after
+      successful toggles/edits.
+    - Per-item `persist = false` disables both saving and restoring.
+
+===============================================================================
+API                                                           *megatoggler-api*
+
+All functions are on the module returned by `require('megatoggler')`.
+
+    setup(opts)                       Initialize plugin and define tabs/items
+    open()                            Open dashboard (or close if already open)
+    close()                           Close dashboard if open
+    toggle()                          Open if closed; close if open
+    persist()                         Snapshot all current states and save
+    add_item(tab_id, item)            Append an item to an existing tab
+    remove_item(tab_id, item_id)      Remove an item from a tab
+    add_tab(tab)                      Append a new tab (validates items)
+    set_value(tab_id, item_id, value) Programmatically set value items
+
+===============================================================================
+HIGHLIGHTS                                              *megatoggler-highlights*
+
+Defined highlight groups (linked to common HL groups by default):
+
+hi link MegaTogglerTitle Title
+hi link MegaTogglerBorder FloatBorder
+hi link MegaTogglerTab TabLine
+hi link MegaTogglerTabActive TabLineSel
+hi link MegaTogglerItem Normal
+hi link MegaTogglerItemOn String
+hi link MegaTogglerItemOff String
+hi link MegaTogglerDesc Comment
+hi link MegaTogglerValueLabel Identifier
+hi link MegaTogglerValueText Normal
+hi link MegaTogglerItemEphemeral Comment
+hi link MegaTogglerItemOnEphemeral Constant
+hi link MegaTogglerItemOffEphemeral Constant
+hi link MegaTogglerValueLabelEphemeral Constant
+hi link MegaTogglerValueTextEphemeral Normal
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:

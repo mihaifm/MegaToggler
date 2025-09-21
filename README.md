@@ -4,9 +4,8 @@ A Neovim plugin where you can toggle things on and off.
 
 - Floating dashboard with tabs and pretty checkboxes
 - Toggle editor features via configurable callbacks
-- Also edit text/numeric values (e.g., Tabstop: 4)
+- Edit text/numeric values with a visual UI
 - State persistence across sessions
-- Configurable padding/indent per item to build tree-like layouts
 
 ## Install
 
@@ -15,16 +14,6 @@ Requirement: Neovim 0.11+
 Sample lazy.nvim installation below.
 
 MegaToggler does not come with any default items to be toggled. You will need to provide your own.
-
-Item types:
-- Toggle items (booleans):
-  - `get()` returns true/false
-  - `on_toggle(checked)` applies the boolean
-- Value items (numbers/strings):
-  - `get()` returns the current value (number or string)
-  - `on_set(value)` applies the value
-  - `edit_size` (number, optional): width of the inline input when editing
-  - Optional: `coerce(input_string) -> value`, `validate(value) -> ok, msg`
 
 Below is a sample configuration that can help you get started:
 
@@ -35,43 +24,68 @@ Below is a sample configuration that can help you get started:
     require("megatoggler").setup({
       tabs = {
         {
-          id = "editor",
-          label = "Editor",
+          -- global options you might want to persist
+          id = "Globals",
           items = {
             {
-              id = "number",
-              label = "Line Numbers", -- what gets displayed in the dasboard
-              get = function() return vim.wo.number end, -- mandatory function returning item state
-              on_toggle = function(on) vim.wo.number = on end, -- called when ticking the checkbox
+              id = "Ignore Case",
+              -- all items must define a get method
+              get = function() return vim.o.ignorecase end,
+              -- items with boolean value must define on_toggle
+              on_toggle = function(on) vim.o.ignorecase = on end,
             },
             {
-              id = "relativenumber",
-              label = "Relative Numbers",
-              persist = false, -- do not save the state of this item across sessions
-              get = function() return vim.wo.relativenumber end,
-              on_toggle = function(on) vim.wo.relativenumber = on end,
+              id = "Tabstop",
+              label = "Tab Stop", -- optional label
+              desc = "Tab size", -- optional description
+              get = function()
+                -- use opt_global for vim options you want to persist
+                return vim.opt_global.tabstop:get()
+              end,
+              -- items with numeric/string value must define on_set
+              on_set = function(v)
+                vim.opt_global.tabstop = v
+              end,
+              -- size of the textbox when editing
+              edit_size = 3
             },
-          },
+            {
+              id = "Expand Tab",
+              get = function() return vim.opt_global.expandtab:get() end,
+              on_toggle = function(on) vim.opt_global.expandtab = on end,
+            },
+            {
+              id = "Inc Command",
+              get = function() return vim.o.inccommand end,
+              on_set = function(v) vim.o.inccommand = v end,
+              edit_size = 10
+            },
+          }
         },
         {
-          id = "UI",
-          label = "Interface",
+          -- local options you might want to toggle but not persist
+          id = "Local",
           items = {
             {
-              id = 'tabline',
-              label = 'Tabline',
-              get = function() return vim.o.showtabline == 2 end,
-              on_toggle = function(on)
-                if on then 
-                  vim.o.showtabline = 2
-                else
-                  vim.o.showtabline = 0
-                end
-              end
+              id = 'Tabstop',
+              -- disable persistance for buffer-local options
+              persist = false,
+              get = function() return vim.bo.tabstop end,
+              on_set = function(v) vim.bo.tabstop = v end
+            }
+          }
+        },
+        {
+          -- toggle features provided by other plugins
+          id = "Features",
+          items = {
+            {
+              id = 'Render Markdown',
+              get = function() return require('render-markdown').get() end,
+              on_toggle = function() require('render-markdown').toggle() end,
             },
             {
-              id = 'neotree',
-              label = 'Neotree',
+              id = "Neotree",
               get = function()
                 -- check if Neotree is loaded in window
                 for _, win in ipairs(vim.api.nvim_list_wins()) do
@@ -86,54 +100,61 @@ Below is a sample configuration that can help you get started:
                 vim.cmd("Neotree toggle")
               end
             },
-          },
-        },
-        {
-          id = "lang",
-          label = "Lang",
-          items = {
             {
-              id = 'render-markdown',
-              label = 'Render Markdown',
-              get = function() return require('render-markdown').get() end,
-              on_toggle = function() require('render-markdown').toggle() end,
-            },
-          },
-        },
-        {
-          id = "settings",
-          label = "Settings",
-          items = {
-            {
-              id = 'tabstop',
-              label = 'Tabstop',
-              get = function() return vim.bo.tabstop end,
-              on_set = function(v) vim.bo.tabstop = v end,
-              -- optional helpers for input UX
-              coerce = function(s) return tonumber(s) or s end,
-              validate = function(v)
-                return type(v) == 'number' and v >= 1 and v <= 16, 'must be a number 1..16'
+              id = "Autopairs",
+              get = function()
+                -- check if plugin is loaded by Lazy
+                -- only needed if you lazy load the plugin
+                local lc = require("lazy.core.config")
+                if not (lc.plugins["nvim-autopairs"] and lc.plugins["nvim-autopairs"]._.loaded) then
+                  return false
+                end
+
+                return not require("nvim-autopairs").state.disabled
               end,
+              on_toggle = function(on)
+                -- avoid lazy loading the plugin if on == false
+                if on == false then
+                  local lc = require("lazy.core.config")
+                  if not (lc.plugins["nvim-autopairs"] and lc.plugins["nvim-autopairs"]._.loaded) then
+                    return
+                  end
+                end
+
+                if on then
+                  require("nvim-autopairs").enable()
+                else
+                  require("nvim-autopairs").disable()
+                end
+              end
+            },
+            {
+              id = "Smooth scrolling",
+              -- disable persistance when it's difficult to get the plugin's internal state
+              persist = false,
+              get = function() return true end,
+              on_toggle = function() vim.cmd("ToggleNeoscroll") end,
+              -- set custom icons for plugins where it's difficult to get the state
+              icons = { checked = "", unchecked = "" },
             },
           }
-        },
-      },
+        }
+      }
     })
-  end,
-}
+  end
 ```
 
 ## Configuration
 
-Default configuration:
+Defaults:
 
 ```lua
 {
   ui = { 
     width = 60, 
     height = 18, 
-    border = "rounded", -- also used for value inputs (overlay and nui)
-    value_input = 'overlay', -- 'overlay' (built-in) or 'nui' (requires nui.nvim, no fallback)
+    border = "rounded", -- also used for value inputs
+    value_input = 'overlay', -- 'overlay' | 'nui' (requires nui.nvim)
     padding = '  ', -- global left padding for items
     icons = { checked = '', unchecked = '' },
   },
@@ -141,8 +162,8 @@ Default configuration:
   persist_namespace = "default",
   persist_file = vim.fn.stdpath('state') .. '/megatoggler/state.json',
   tabs = {
+    -- your items come here
     -- see examples above
-    -- { id = "editor", label = "Editor", items = { ... } }
   }
 }
 ```
