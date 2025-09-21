@@ -146,7 +146,7 @@ Below is a sample configuration that can help you get started:
 
 ## Configuration
 
-Defaults:
+Plugin configuration defaults:
 
 ```lua
 {
@@ -163,7 +163,7 @@ Defaults:
   persist_file = vim.fn.stdpath('state') .. '/megatoggler/state.json',
   tabs = {
     -- your items come here
-    -- see examples above
+    -- item specification below
   }
 }
 ```
@@ -173,6 +173,32 @@ The default config comes with nerd font icons. Override with ascii values if not
 ```lua
 {
   ui = { icons = { checked = '[x]', unchecked = '[ ]' }
+}
+```
+
+## Item Specification
+
+```lua
+item = {
+  id = "",
+  label = "", -- optional, item id is used when label is missing
+  persist = true, -- persist the state of the item
+  disabled = false, -- display the item but disable interraction
+  get = function()
+    -- should return the state of the item
+  end,
+  on_toggle = function(on) -- on: true | false - current value
+    -- the action to take when toggling a boolean option
+  end,
+  on_set = function(v) -- v: number | string - current value
+    -- the action to take when setting a numeric/string value
+  end,
+  validate = function(v) -- optional item validation
+    -- must return: ok, msg
+  end
+  edit_size = 20, -- size of the textbox when editing values
+  padding = 2 -- align items with a left padding
+  icons = { checked = '', unchecked = '' }
 }
 ```
 
@@ -186,7 +212,7 @@ The default config comes with nerd font icons. Override with ascii values if not
 
 Notes:
 - Dashboard is single instance - invoking `:MegaToggler` again closes it
-- Toggle actions apply to the previously active window/buffer
+- All actions triggered by the dashboard apply to the previously active window/buffer
 
 ## API
 
@@ -200,13 +226,6 @@ require("megatoggler").remove_item(tab_id, item_id)
 require("megatoggler").add_tab({ id, label, items = { ... } })
 require("megatoggler").set_value(tab_id, item_id, value) -- programmatic setter for value items
 ```
-
-### Value Input Provider
-
-- Configure with `ui.value_input = 'overlay' | 'nui'` (default: `overlay`).
-- `overlay`: built-in 1-line floating input placed over the value text.
-- `nui`: uses `nui.nvim`'s input; when selected, `nui.nvim` must be installed (no fallback).
-
 
 ## Highlights
 
@@ -231,4 +250,4 @@ require("megatoggler").set_value(tab_id, item_id, value) -- programmatic setter 
 
 MIT
 
-Disclaimer: this is a vibe-coded plugin
+Enjoy
