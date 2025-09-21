@@ -1,11 +1,13 @@
 # MegaToggler
 
-A Neovim plugin where you can toggle things on and off.
+**MegaToggler** is a Neovim plugin where you can toggle or modify editor options in a visual interface, via user-defined setup.
 
-- Floating dashboard with tabs and pretty checkboxes
-- Toggle editor features via configurable callbacks
-- Edit text/numeric values with a visual UI
+## Features
+
+- Floating dashboard with tabs and checkboxes
+- Toggle editor features with your own code
 - State persistence across sessions
+- No items included by default - it's easy to add your own
 
 ## Install
 
@@ -68,7 +70,7 @@ Below is a sample configuration that can help you get started:
           items = {
             {
               id = 'Tabstop',
-              -- disable persistance for buffer-local options
+              -- disable persistence for buffer-local options
               persist = false,
               get = function() return vim.bo.tabstop end,
               on_set = function(v) vim.bo.tabstop = v end
@@ -130,7 +132,7 @@ Below is a sample configuration that can help you get started:
             },
             {
               id = "Smooth scrolling",
-              -- disable persistance when it's difficult to get the plugin's internal state
+              -- disable persistence when it's difficult to get the plugin's internal state
               persist = false,
               get = function() return true end,
               on_toggle = function() vim.cmd("ToggleNeoscroll") end,
@@ -183,7 +185,7 @@ item = {
   id = "",
   label = "", -- optional, item id is used when label is missing
   persist = true, -- persist the state of the item
-  disabled = false, -- display the item but disable interraction
+  disabled = false, -- display the item but disable interaction
   get = function()
     -- should return the state of the item
   end,
