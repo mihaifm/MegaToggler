@@ -357,23 +357,50 @@ local function render()
   local hl_spans = {}
   state.render_line_meta = {}
 
-  -- Tabline (line 1)
+  -- tabline (line 1)
   local tabline, tab_spans = build_tabline(state.current_tab)
   table.insert(lines, tabline)
   for _, s in ipairs(tab_spans) do table.insert(hl_spans, s) end
 
-  -- Blank separator
+  -- blank separator
   table.insert(lines, '')
 
-  -- Items (start at visual buffer line 3)
+  -- items (start at visual buffer line 3)
   local tab = current_tab_conf()
   local icons_default = get_icons()
-  for _, item in ipairs(tab.items or {}) do
+
+  -- collect all item states/values in a single switch to the target window
+  local collected = {}
+  do
+    local ok_collect, values = with_target_window(function()
+      local vals = {}
+      for i, it in ipairs(tab.items or {}) do
+        local ok, cur = pcall(it.get)
+        if not ok then
+          vim.notify(string.format('MegaToggler: get() failed for %s: %s', it.label or it.id, cur), vim.log.levels.WARN)
+          cur = nil
+        end
+        if item_kind(it) == 'toggle' then
+          vals[i] = { kind = 'toggle', bool = not not cur }
+        else
+          vals[i] = { kind = 'value', value = cur }
+        end
+      end
+      return vals
+    end)
+    if ok_collect and type(values) == 'table' then
+      collected = values
+    else
+      collected = {}
+    end
+  end
+
+  for i, item in ipairs(tab.items or {}) do
     local kind = item_kind(item)
     if kind == 'toggle' then
       local pad = get_item_padding(item)
       local padlen = #pad
-      local checked = item_effective_state(tab, item)
+      local checked = (collected[i] and collected[i].bool) or false
       local icons = get_icons(item)
       local icon = checked and (icons.checked or icons_default.checked) or (icons.unchecked or icons_default.unchecked)
       local label = item.label or item.id
@@ -397,7 +424,7 @@ local function render()
       local pad = get_item_padding(item)
       local padlen = #pad
       local label = item.label or item.id
-      local value = item_current_value(tab, item)
+      local value = (collected[i] and collected[i].value)
       local value_str = tostring(value)
       local line = string.format('%s   %s  %s', pad, label, value_str)
       table.insert(lines, line)
