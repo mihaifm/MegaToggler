@@ -1,18 +1,8 @@
--- MegaToggler: Tabbed keyboard-driven toggle dashboard for Neovim 0.11+
---
--- This module provides a floating window with tabs and checkbox-like items.
--- Users navigate with the keyboard and toggle items that run user-provided
--- callbacks. State persists across sessions via a small JSON file.
---
--- Keyboard UX:
--- - Movement: j/k, Up/Down, gg/G (native buffer navigation)
--- - Tabs: h/l, Left/Right, Tab/Shift-Tab
--- - Toggle item: <CR> or <Space>
--- - Close: q or <Esc>
---
+-- MegaToggler: Toggle Neovim settings
+
 local M = {}
 
--- Dedicated namespace for extmark-based highlights (Neovim 0.11+)
+-- Dedicated namespace for extmark-based highlights
 local NS = vim.api.nvim_create_namespace('MegaToggler')
 
 -- Defaults and config baseline
@@ -25,7 +15,7 @@ local defaults = {
     title = ' MegaToggler ',
     zindex = 200,
     value_input = 'overlay', -- 'overlay' | 'nui'
-    padding = '  ', -- global left padding for items
+    padding = '  ',
     icons = {
       checked = '',
       unchecked = '',
@@ -36,9 +26,6 @@ local defaults = {
   persist_file = vim.fn.stdpath('state') .. '/megatoggler/state.json',
 }
 
--- Default icons; users may override per item
-local ICONS = { checked = '', unchecked = '' }
-
 -- Internal ephemeral state for the dashboard instance
 local state = {
   config = nil,
@@ -48,22 +35,10 @@ local state = {
   prev_win = nil, -- window id active before opening dashboard
   prev_buf = nil, -- buffer id active before opening dashboard
   persisted = {},
-  render_line_meta = nil, -- per-render metadata for items (for value editing)
+  render_line_meta = nil, -- per-render metadata for editing items
   overlay_win = nil,
   overlay_buf = nil,
 }
-
--- Forward declaration for helper used before its definition
-local with_target_window
-
--- Forward declaration for persist-all helper
-local persist_all_current_states
-
--- Forward declaration for item_effective_state used before its definition
-local item_effective_state
--- Forward declarations for value-item helpers
-local item_kind
-local item_current_value
 
 -- deepcopy: recursively copies tables to avoid mutating user-provided options
 local function deepcopy(tbl)
@@ -143,10 +118,86 @@ local function get_persist(ns, tab_id, item_id)
   return t[item_id]
 end
 
+-- Item kinds: 'toggle' (boolean) or 'value' (text/numeric)
+local function item_kind(item)
+  if item.type == 'value' then return 'value' end
+  if item.type == 'toggle' then return 'toggle' end
+  if type(item.on_set) == 'function' then return 'value' end
+  return 'toggle'
+end
+
+-- enforce_toggler_winopts: make sure the dashboard window keeps predictable
+-- window-local options, regardless of what user callbacks might change when we
+-- temporarily jump to other windows to apply toggles.
+local function enforce_toggler_winopts(win)
+  if not (win and vim.api.nvim_win_is_valid(win)) then return end
+  pcall(function() vim.wo[win].number = false end)
+  pcall(function() vim.wo[win].relativenumber = false end)
+  pcall(function() vim.wo[win].signcolumn = 'no' end)
+  pcall(function() vim.wo[win].wrap = false end)
+  pcall(function() vim.wo[win].spell = false end)
+  -- Ensure we are not left in insert mode after interacting with terminal buffers
+  pcall(vim.cmd.stopinsert)
+end
+
+-- with_target_window: temporarily switch to the previous editor window (or a
+-- best-effort non-floating fallback) to run `fn`, then switch back to the
+-- dashboard window and re-assert its window-local options. Returns pcall tuple.
+local function with_target_window(fn)
+  local cur_win = vim.api.nvim_get_current_win()
+  local target = nil
+  if state.prev_win and vim.api.nvim_win_is_valid(state.prev_win) then
+    target = state.prev_win
+  else
+    for _, w in ipairs(vim.api.nvim_list_wins()) do
+      if not state.win or w ~= state.win then
+        local cfg = vim.api.nvim_win_get_config(w)
+        if not cfg or cfg.relative == '' then
+          target = w
+          break
+        end
+      end
+    end
+  end
+  if target and vim.api.nvim_win_is_valid(target) then
+    pcall(vim.api.nvim_set_current_win, target)
+  end
+  local ok, res = pcall(fn)
+  if state.win and vim.api.nvim_win_is_valid(state.win) then
+    pcall(vim.api.nvim_set_current_win, cur_win)
+    enforce_toggler_winopts(state.win)
+  else
+    pcall(vim.api.nvim_set_current_win, cur_win)
+    pcall(vim.cmd.stopinsert)
+  end
+  return ok, res
+end
+
+-- Retrieve current value for an item, running in target window when possible
+local function item_current_value(tab, item)
+  local ok, cur
+  if state.win and vim.api.nvim_win_is_valid(state.win) then
+    ok, cur = with_target_window(item.get)
+  else
+    ok, cur = pcall(item.get)
+  end
+  if not ok then
+    vim.notify(string.format('MegaToggler: get() failed for %s: %s', item.label or item.id, cur), vim.log.levels.WARN)
+    return nil
+  end
+  return cur
+end
+
+local function item_effective_state(tab, item)
+  -- For toggle items, normalize get() to boolean.
+  local cur = item_current_value(tab, item)
+  return not not cur
+end
+
 -- persist_all_current_states: snapshot current states for all items and write
 -- them to the persistence file in a single save. Uses item.get() evaluated in
 -- the target window context when available.
-function persist_all_current_states()
+local function persist_all_current_states()
   if not state.config or state.config.persist == false then return end
   local ns = state.config.persist_namespace or 'default'
   state.persisted[ns] = state.persisted[ns] or {}
@@ -216,11 +267,11 @@ end
 -- Utility: pick icons
 local function get_icons(item)
   local cfg = state.config or defaults
-  local cfg_icons = (cfg.ui and cfg.ui.icons) or nil
-  local icons = (item and item.icons) or cfg_icons or ICONS
+  local base = (cfg.ui and cfg.ui.icons) or defaults.ui.icons
+  local overrides = (item and item.icons) or {}
   return {
-    checked = icons.checked or ICONS.checked,
-    unchecked = icons.unchecked or ICONS.unchecked,
+    checked = overrides.checked or base.checked,
+    unchecked = overrides.unchecked or base.unchecked,
   }
 end
 
@@ -242,29 +293,6 @@ local function get_item_padding(item)
   return base
 end
 
--- Item kinds: 'toggle' (boolean) or 'value' (text/numeric)
-item_kind = function(item)
-  if item.type == 'value' then return 'value' end
-  if item.type == 'toggle' then return 'toggle' end
-  if type(item.on_set) == 'function' then return 'value' end
-  return 'toggle'
-end
-
--- Retrieve current value for an item, running in target window when possible
-item_current_value = function(tab, item)
-  local ok, cur
-  if state.win and vim.api.nvim_win_is_valid(state.win) then
-    ok, cur = with_target_window(item.get)
-  else
-    ok, cur = pcall(item.get)
-  end
-  if not ok then
-    vim.notify(string.format('MegaToggler: get() failed for %s: %s', item.label or item.id, cur), vim.log.levels.WARN)
-    return nil
-  end
-  return cur
-end
-
 -- Convenience helpers for current tab and item state resolution
 local function current_tab_conf()
   return state.config.tabs[state.current_tab]
@@ -277,12 +305,6 @@ local function find_tab(tab_id)
     if t.id == tab_id then return i, t end
   end
   return nil, nil
-end
-
-function item_effective_state(tab, item)
-  -- For toggle items, normalize get() to boolean.
-  local cur = item_current_value(tab, item)
-  return not not cur
 end
 
 -- Make buffer scratchy, hidden, and isolated from user files
@@ -306,53 +328,6 @@ local function apply_highlights(buf, spans)
       hl_group = hl,
     })
   end
-end
-
--- enforce_toggler_winopts: make sure the dashboard window keeps predictable
--- window-local options, regardless of what user callbacks might change when we
--- temporarily jump to other windows to apply toggles.
-local function enforce_toggler_winopts(win)
-  if not (win and vim.api.nvim_win_is_valid(win)) then return end
-  pcall(function() vim.wo[win].number = false end)
-  pcall(function() vim.wo[win].relativenumber = false end)
-  pcall(function() vim.wo[win].signcolumn = 'no' end)
-  pcall(function() vim.wo[win].wrap = false end)
-  pcall(function() vim.wo[win].spell = false end)
-  -- Ensure we are not left in insert mode after interacting with terminal buffers
-  pcall(vim.cmd.stopinsert)
-end
-
--- with_target_window: temporarily switch to the previous editor window (or a
--- best-effort non-floating fallback) to run `fn`, then switch back to the
--- dashboard window and re-assert its window-local options. Returns pcall tuple.
-function with_target_window(fn)
-  local cur_win = vim.api.nvim_get_current_win()
-  local target = nil
-  if state.prev_win and vim.api.nvim_win_is_valid(state.prev_win) then
-    target = state.prev_win
-  else
-    for _, w in ipairs(vim.api.nvim_list_wins()) do
-      if not state.win or w ~= state.win then
-        local cfg = vim.api.nvim_win_get_config(w)
-        if not cfg or cfg.relative == '' then
-          target = w
-          break
-        end
-      end
-    end
-  end
-  if target and vim.api.nvim_win_is_valid(target) then
-    pcall(vim.api.nvim_set_current_win, target)
-  end
-  local ok, res = pcall(fn)
-  if state.win and vim.api.nvim_win_is_valid(state.win) then
-    pcall(vim.api.nvim_set_current_win, cur_win)
-    enforce_toggler_winopts(state.win)
-  else
-    pcall(vim.api.nvim_set_current_win, cur_win)
-    pcall(vim.cmd.stopinsert)
-  end
-  return ok, res
 end
 
 -- ensure_highlight_defaults: define our highlight groups by linking to common
